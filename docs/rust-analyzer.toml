@@ -1,0 +1,5 @@
+[rust-analyzer]
+procMacro.enable = true
+cargo.features = "all"
+rustc.source = "discover"
+
