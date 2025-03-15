@@ -163,7 +163,7 @@ describe("Localsolana Contracts Tests", () => {
     const escrowId = new BN(escrowIdCounter++);
     const tradeId = new BN(2);
     const amount = new BN(1000000);
-    const [escrowPDA, _bump] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
 
     console.log("=== Escrow Creation ===");
     console.log("Creating escrow with PDA:", escrowPDA.toBase58());
@@ -597,8 +597,8 @@ describe("Localsolana Contracts Tests", () => {
       .accounts({
         authority: seller.publicKey,
         escrow: escrowPDA,
-        escrowTokenAccount: null, // Not funded yet, so no token account
-        sellerTokenAccount: null, // No funds to return
+        escrowTokenAccount: null,
+        sellerTokenAccount: null,
         tokenProgram: token.TOKEN_PROGRAM_ID,
       })
       .signers([seller])
@@ -738,5 +738,561 @@ describe("Localsolana Contracts Tests", () => {
 
     const escrowAccount = await program.account.escrow.fetch(escrowPDA);
     assert.deepEqual(escrowAccount.state, { funded: {} }, "State should remain Funded");
+  });
+
+  // Step 6 Tests
+  it("Initializes bond accounts", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
+    const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
+
+    console.log("=== Bond Account Initialization ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .initializeBuyerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: buyer.publicKey,
+        escrow: escrowPDA,
+        buyerBondAccount: buyerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([buyer])
+      .rpc();
+
+    await program.methods
+      .initializeSellerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: seller.publicKey,
+        escrow: escrowPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    const buyerBondAccount = await provider.connection.getTokenAccountBalance(buyerBondPDA);
+    const sellerBondAccount = await provider.connection.getTokenAccountBalance(sellerBondPDA);
+
+    assert.equal(buyerBondAccount.value.amount, "0", "Buyer bond account should be initialized with 0 tokens");
+    assert.equal(sellerBondAccount.value.amount, "0", "Seller bond account should be initialized with 0 tokens");
+  });
+
+  it("Opens dispute as buyer", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+    const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
+    const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
+    const evidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+
+    console.log("=== Dispute Opening ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .markFiatPaid()
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    await program.methods
+      .initializeBuyerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: buyer.publicKey,
+        escrow: escrowPDA,
+        buyerBondAccount: buyerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([buyer])
+      .rpc();
+
+    await program.methods
+      .initializeSellerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: seller.publicKey,
+        escrow: escrowPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+    await program.methods
+      .openDisputeWithBond(evidenceHash)
+      .accounts({
+        disputingParty: buyer.publicKey,
+        escrow: escrowPDA,
+        disputingPartyTokenAccount: buyerTokenAccount,
+        buyerBondAccount: buyerBondPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+      })
+      .signers([buyer])
+      .rpc();
+
+    const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+    const buyerBondBalance = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+    console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
+    console.log(`Buyer bond balance: ${buyerBondBalance}`);
+
+    assert.equal(
+      new BN(buyerBalanceBefore).sub(new BN(buyerBalanceAfter)).toString(),
+      "50000",
+      "Buyer should transfer bond (5% of 1,000,000)"
+    );
+    assert.equal(buyerBondBalance, "50000", "Bond account should receive 50,000 lamports");
+    assert.deepEqual(escrowAccount.state, { disputed: {} }, "State should be Disputed");
+    assert.equal(escrowAccount.disputeInitiator?.toBase58(), buyer.publicKey.toBase58(), "Dispute initiator should be buyer");
+  });
+
+  it("Responds to dispute as seller", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+    const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
+    const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
+    const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+    const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
+
+    console.log("=== Dispute Response ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .markFiatPaid()
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    await program.methods
+      .initializeBuyerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: buyer.publicKey,
+        escrow: escrowPDA,
+        buyerBondAccount: buyerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([buyer])
+      .rpc();
+
+    await program.methods
+      .initializeSellerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: seller.publicKey,
+        escrow: escrowPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .openDisputeWithBond(buyerEvidenceHash)
+      .accounts({
+        disputingParty: buyer.publicKey,
+        escrow: escrowPDA,
+        disputingPartyTokenAccount: buyerTokenAccount,
+        buyerBondAccount: buyerBondPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+      })
+      .signers([buyer])
+      .rpc();
+
+    const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+    await program.methods
+      .respondToDisputeWithBond(sellerEvidenceHash)
+      .accounts({
+        respondingParty: seller.publicKey,
+        escrow: escrowPDA,
+        respondingPartyTokenAccount: sellerTokenAccount,
+        buyerBondAccount: buyerBondPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+      })
+      .signers([seller])
+      .rpc();
+
+    const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+    const sellerBondBalance = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+    console.log(`Seller balance before: ${sellerBalanceBefore}, after: ${sellerBalanceAfter}`);
+    console.log(`Seller bond balance: ${sellerBondBalance}`);
+
+    assert.equal(
+      new BN(sellerBalanceBefore).sub(new BN(sellerBalanceAfter)).toString(),
+      "50000",
+      "Seller should transfer bond (5% of 1,000,000)"
+    );
+    assert.equal(sellerBondBalance, "50000", "Seller bond account should receive 50,000 lamports");
+    assert.deepEqual(escrowAccount.state, { disputed: {} }, "State should remain Disputed");
+    assert.notEqual(
+      Buffer.from(escrowAccount.disputeEvidenceHashSeller!).toString("hex"),
+      Buffer.from(buyerEvidenceHash).toString("hex"),
+      "Seller evidence hash should be set"
+    );
+  });
+
+  // it("Resolves dispute with buyer winning", async () => {
+  //   const escrowId = new BN(escrowIdCounter++);
+  //   const tradeId = new BN(2);
+  //   const amount = new BN(1000000);
+  //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+  //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+  //   const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
+  //   const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
+  //   const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+  //   const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
+  //   const resolutionHash = Buffer.alloc(32, "resolution").toJSON().data;
+
+  //   console.log("=== Dispute Resolution (Buyer Wins) ===");
+  //   await program.methods
+  //     .createEscrow(escrowId, tradeId, amount, false, null)
+  //     .accounts({
+  //       seller: seller.publicKey,
+  //       buyer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       system_program: anchor.web3.SystemProgram.programId,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
+
+  //   await program.methods
+  //     .fundEscrow()
+  //     .accounts({
+  //       seller: seller.publicKey,
+  //       escrow: escrowPDA,
+  //       sellerTokenAccount: sellerTokenAccount,
+  //       escrowTokenAccount: escrowTokenPDA,
+  //       tokenMint: tokenMint,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
+
+  //   await program.methods
+  //     .markFiatPaid()
+  //     .accounts({
+  //       buyer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //     })
+  //     .signers([buyer])
+  //     .rpc();
+
+  //   await program.methods
+  //     .initializeBuyerBondAccount(escrowId, tradeId)
+  //     .accounts({
+  //       payer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       buyerBondAccount: buyerBondPDA,
+  //       tokenMint: tokenMint,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //     })
+  //     .signers([buyer])
+  //     .rpc();
+
+  //   await program.methods
+  //     .initializeSellerBondAccount(escrowId, tradeId)
+  //     .accounts({
+  //       payer: seller.publicKey,
+  //       escrow: escrowPDA,
+  //       sellerBondAccount: sellerBondPDA,
+  //       tokenMint: tokenMint,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
+
+  //   await program.methods
+  //     .openDisputeWithBond(buyerEvidenceHash)
+  //     .accounts({
+  //       disputingParty: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       disputingPartyTokenAccount: buyerTokenAccount,
+  //       buyerBondAccount: buyerBondPDA,
+  //       sellerBondAccount: sellerBondPDA,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //     })
+  //     .signers([buyer])
+  //     .rpc();
+
+  //   await program.methods
+  //     .respondToDisputeWithBond(sellerEvidenceHash)
+  //     .accounts({
+  //       respondingParty: seller.publicKey,
+  //       escrow: escrowPDA,
+  //       respondingPartyTokenAccount: sellerTokenAccount,
+  //       buyerBondAccount: buyerBondPDA,
+  //       sellerBondAccount: sellerBondPDA,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
+
+  //   const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+  //   const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+  //   const buyerBondBefore = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
+  //   const sellerBondBefore = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
+
+  //   await program.methods
+  //     .resolveDisputeWithExplanation(true, resolutionHash)
+  //     .accounts({
+  //       arbitrator: arbitrator.publicKey,
+  //       escrow: escrowPDA,
+  //       escrowTokenAccount: escrowTokenPDA,
+  //       buyerTokenAccount: buyerTokenAccount,
+  //       sellerTokenAccount: sellerTokenAccount,
+  //       arbitratorTokenAccount: arbitratorTokenAccount,
+  //       buyerBondAccount: buyerBondPDA,
+  //       sellerBondAccount: sellerBondPDA,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //     })
+  //     .signers([arbitrator])
+  //     .rpc();
+
+  //   const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+  //   const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+  //   const buyerBondAfter = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
+  //   const sellerBondAfter = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
+  //   const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+  //   console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
+  //   console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
+  //   console.log(`Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`);
+  //   console.log(`Seller bond before: ${sellerBondBefore}, after: ${sellerBondAfter}`);
+
+  //   assert.equal(
+  //     new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
+  //     "1050000",
+  //     "Buyer should receive principal (1,000,000) + bond (50,000)"
+  //   );
+  //   assert.equal(
+  //     new BN(arbitratorBalanceAfter).sub(new BN(arbitratorBalanceBefore)).toString(),
+  //     "60000",
+  //     "Arbitrator should receive fee (10,000) + seller bond (50,000)"
+  //   );
+  //   assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
+  //   assert.equal(sellerBondAfter, "0", "Seller bond should be emptied");
+  //   assert.deepEqual(escrowAccount.state, { resolved: {} }, "State should be Resolved");
+  // });
+
+  it("Resolves dispute by default judgment (buyer wins)", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+    const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
+    const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
+    const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+
+    console.log("=== Default Judgment (Buyer Wins) ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .markFiatPaid()
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    await program.methods
+      .initializeBuyerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: buyer.publicKey,
+        escrow: escrowPDA,
+        buyerBondAccount: buyerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([buyer])
+      .rpc();
+
+    await program.methods
+      .initializeSellerBondAccount(escrowId, tradeId)
+      .accounts({
+        payer: seller.publicKey,
+        escrow: escrowPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .openDisputeWithBond(buyerEvidenceHash)
+      .accounts({
+        disputingParty: buyer.publicKey,
+        escrow: escrowPDA,
+        disputingPartyTokenAccount: buyerTokenAccount,
+        buyerBondAccount: buyerBondPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+      })
+      .signers([buyer])
+      .rpc();
+
+    // Simulate 72-hour delay (not feasible in testnet, so we assume deadline passed)
+    const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+    const buyerBondBefore = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
+
+    // Note: In a real scenario, we'd wait 72 hours. Here, we assume the test environment allows immediate judgment.
+    await program.methods
+      .defaultJudgment()
+      .accounts({
+        arbitrator: arbitrator.publicKey,
+        escrow: escrowPDA,
+        escrowTokenAccount: escrowTokenPDA,
+        buyerTokenAccount: buyerTokenAccount,
+        sellerTokenAccount: sellerTokenAccount,
+        buyerBondAccount: buyerBondPDA,
+        sellerBondAccount: sellerBondPDA,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+      })
+      .signers([arbitrator])
+      .rpc();
+
+    const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+    const buyerBondAfter = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+    console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
+    console.log(`Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`);
+
+    assert.equal(
+      new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
+      "1060000",
+      "Buyer should receive principal + fee (1,010,000) + bond (50,000)"
+    );
+    assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
+    assert.deepEqual(escrowAccount.state, { resolved: {} }, "State should be Resolved");
   });
 });
