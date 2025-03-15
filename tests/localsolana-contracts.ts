@@ -5,8 +5,8 @@ import { assert } from "chai";
 import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
-import { LocalsolanaContracts } from "../target/types/localsolana_contracts";
 import * as token from "@solana/spl-token";
+import { LocalsolanaContracts } from "../target/types/localsolana_contracts";
 
 dotenv.config();
 
@@ -23,18 +23,16 @@ const seller = loadKeypair(process.env.SELLER_KEYPAIR || "");
 const buyer = loadKeypair(process.env.BUYER_KEYPAIR || "");
 const arbitrator = loadKeypair(process.env.ARBITRATOR_KEYPAIR || "");
 
-// Ensure keypairs are loading correctly:
+console.log("=== Keypair Checking ===");
 console.log("Seller pubkey:", seller.publicKey.toBase58());
 console.log("Buyer pubkey:", buyer.publicKey.toBase58());
 console.log("Arbitrator pubkey:", arbitrator.publicKey.toBase58());
 
-// add token global variablesf for token testing (USDC mimicking)
+let escrowIdCounter = 1;
 let tokenMint: PublicKey;
 let sellerTokenAccount: PublicKey;
 let buyerTokenAccount: PublicKey;
 let arbitratorTokenAccount: PublicKey;
-
-let escrowIdCounter = 1;
 
 describe("Localsolana Contracts Tests", () => {
   const provider = anchor.AnchorProvider.env();
@@ -52,9 +50,27 @@ describe("Localsolana Contracts Tests", () => {
       program.programId
     );
 
-  async function ensureFunds(publicKey: PublicKey, minLamports: number = 4 * LAMPORTS_PER_SOL): Promise<void> {
+  const deriveEscrowTokenPDA = (escrowKey: PublicKey): [PublicKey, number] =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("escrow_token"), escrowKey.toBuffer()],
+      program.programId
+    );
+
+  const deriveBuyerBondPDA = (escrowKey: PublicKey): [PublicKey, number] =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("buyer_bond"), escrowKey.toBuffer()],
+      program.programId
+    );
+
+  const deriveSellerBondPDA = (escrowKey: PublicKey): [PublicKey, number] =>
+    PublicKey.findProgramAddressSync(
+      [Buffer.from("seller_bond"), escrowKey.toBuffer()],
+      program.programId
+    );
+
+  async function ensureFunds(publicKey: PublicKey, minLamports: number = 5 * LAMPORTS_PER_SOL): Promise<void> {
+    console.log(`Balance for ${publicKey.toBase58()}: ${await provider.connection.getBalance(publicKey)} lamports`);
     const balance = await provider.connection.getBalance(publicKey);
-    console.log(`Balance for ${publicKey.toBase58()}: ${balance} lamports`);
     if (balance < minLamports) {
       console.log(`Requesting airdrop for ${publicKey.toBase58()} (${minLamports} lamports)...`);
       const sig = await provider.connection.requestAirdrop(publicKey, minLamports);
@@ -71,29 +87,30 @@ describe("Localsolana Contracts Tests", () => {
       `Program ID mismatch: ${program.programId.toBase58()} != ${expectedProgramId.toBase58()}`
     );
 
+    console.log("=== Balance Checking ===");
     await Promise.all([
       ensureFunds(seller.publicKey),
       ensureFunds(buyer.publicKey),
       ensureFunds(arbitrator.publicKey),
     ]);
 
-    // Token Setup
+    console.log("=== Token Generation ===");
     console.log("Creating token mint...");
     tokenMint = await token.createMint(
       provider.connection,
-      seller,           // Payer for the transaction
-      seller.publicKey, // Mint authority
-      null,             // Freeze authority (null = none)
-      6                 // Decimals (USDC-like)
+      seller,
+      seller.publicKey,
+      null,
+      6
     );
     console.log("Token mint created:", tokenMint.toBase58());
 
     console.log("Creating seller token account...");
     sellerTokenAccount = await token.createAccount(
       provider.connection,
-      seller,           // Payer
-      tokenMint,        // Mint
-      seller.publicKey  // Owner
+      seller,
+      tokenMint,
+      seller.publicKey
     );
     console.log("Seller token account:", sellerTokenAccount.toBase58());
 
@@ -118,22 +135,27 @@ describe("Localsolana Contracts Tests", () => {
     console.log("Minting tokens to seller...");
     await token.mintTo(
       provider.connection,
-      seller,           // Payer
-      tokenMint,        // Mint
-      sellerTokenAccount, // Destination
-      seller.publicKey, // Mint authority
-      1000000000        // Amount (1000 tokens = 1,000,000,000 lamports with 6 decimals)
+      seller,
+      tokenMint,
+      sellerTokenAccount,
+      seller.publicKey,
+      1000000000
     );
 
     console.log("Minting tokens to buyer...");
     await token.mintTo(
       provider.connection,
-      buyer,
+      seller,
       tokenMint,
       buyerTokenAccount,
-      buyer.publicKey,  // Using buyer as signer (assuming they have mint authority or adjust accordingly)
+      seller.publicKey,
       1000000000
     );
+
+    const sellerBalance = await provider.connection.getTokenAccountBalance(sellerTokenAccount);
+    console.log("Seller token balance:", sellerBalance.value.uiAmount);
+    const buyerBalance = await provider.connection.getTokenAccountBalance(buyerTokenAccount);
+    console.log("Buyer token balance:", buyerBalance.value.uiAmount);
   });
 
   it("Creates a basic escrow", async () => {
@@ -142,6 +164,7 @@ describe("Localsolana Contracts Tests", () => {
     const amount = new BN(1000000);
     const [escrowPDA, _bump] = deriveEscrowPDA(escrowId, tradeId);
 
+    console.log("=== Escrow Creation ===");
     console.log("Creating escrow with PDA:", escrowPDA.toBase58());
     const sellerBalanceBefore = await provider.connection.getBalance(seller.publicKey);
     console.log(`Seller balance before: ${sellerBalanceBefore} lamports`);
@@ -190,6 +213,7 @@ describe("Localsolana Contracts Tests", () => {
     const sequentialAddress = Keypair.generate().publicKey;
     const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
 
+    console.log("=== Escrow Creation ===");
     const tx = await program.methods
       .createEscrow(escrowId, tradeId, amount, true, sequentialAddress)
       .accounts({
@@ -217,6 +241,7 @@ describe("Localsolana Contracts Tests", () => {
     const tradeId = new BN(2);
     const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
 
+    console.log("=== Escrow Creation ===");
     try {
       await program.methods
         .createEscrow(escrowId, tradeId, new BN(0), false, null)
