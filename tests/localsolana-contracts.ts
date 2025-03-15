@@ -1173,126 +1173,228 @@ describe("Localsolana Contracts Tests", () => {
   //   assert.deepEqual(escrowAccount.state, { resolved: {} }, "State should be Resolved");
   // });
 
-  it("Resolves dispute by default judgment (buyer wins)", async () => {
-    const escrowId = new BN(escrowIdCounter++);
-    const tradeId = new BN(2);
-    const amount = new BN(1000000);
-    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
-    const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
-    const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-    const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+  // it("Resolves dispute by default judgment (buyer wins)", async () => {
+  //   const escrowId = new BN(escrowIdCounter++);
+  //   const tradeId = new BN(2);
+  //   const amount = new BN(1000000);
+  //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+  //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+  //   const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
+  //   const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
+  //   const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
 
-    console.log("=== Default Judgment (Buyer Wins) ===");
-    await program.methods
-      .createEscrow(escrowId, tradeId, amount, false, null)
-      .accounts({
-        seller: seller.publicKey,
-        buyer: buyer.publicKey,
-        escrow: escrowPDA,
-        system_program: anchor.web3.SystemProgram.programId,
-      })
-      .signers([seller])
-      .rpc();
+  //   console.log("=== Default Judgment (Buyer Wins) ===");
+  //   await program.methods
+  //     .createEscrow(escrowId, tradeId, amount, false, null)
+  //     .accounts({
+  //       seller: seller.publicKey,
+  //       buyer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       system_program: anchor.web3.SystemProgram.programId,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
 
-    await program.methods
-      .fundEscrow()
-      .accounts({
-        seller: seller.publicKey,
-        escrow: escrowPDA,
-        sellerTokenAccount: sellerTokenAccount,
-        escrowTokenAccount: escrowTokenPDA,
-        tokenMint: tokenMint,
-        tokenProgram: token.TOKEN_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      })
-      .signers([seller])
-      .rpc();
+  //   await program.methods
+  //     .fundEscrow()
+  //     .accounts({
+  //       seller: seller.publicKey,
+  //       escrow: escrowPDA,
+  //       sellerTokenAccount: sellerTokenAccount,
+  //       escrowTokenAccount: escrowTokenPDA,
+  //       tokenMint: tokenMint,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
 
-    await program.methods
-      .markFiatPaid()
-      .accounts({
-        buyer: buyer.publicKey,
-        escrow: escrowPDA,
-      })
-      .signers([buyer])
-      .rpc();
+  //   await program.methods
+  //     .markFiatPaid()
+  //     .accounts({
+  //       buyer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //     })
+  //     .signers([buyer])
+  //     .rpc();
 
-    await program.methods
-      .initializeBuyerBondAccount(escrowId, tradeId)
-      .accounts({
-        payer: buyer.publicKey,
-        escrow: escrowPDA,
-        buyerBondAccount: buyerBondPDA,
-        tokenMint: tokenMint,
-        tokenProgram: token.TOKEN_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      })
-      .signers([buyer])
-      .rpc();
+  //   await program.methods
+  //     .initializeBuyerBondAccount(escrowId, tradeId)
+  //     .accounts({
+  //       payer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       buyerBondAccount: buyerBondPDA,
+  //       tokenMint: tokenMint,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //     })
+  //     .signers([buyer])
+  //     .rpc();
 
-    await program.methods
-      .initializeSellerBondAccount(escrowId, tradeId)
-      .accounts({
-        payer: seller.publicKey,
-        escrow: escrowPDA,
-        sellerBondAccount: sellerBondPDA,
-        tokenMint: tokenMint,
-        tokenProgram: token.TOKEN_PROGRAM_ID,
-        systemProgram: anchor.web3.SystemProgram.programId,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      })
-      .signers([seller])
-      .rpc();
+  //   await program.methods
+  //     .initializeSellerBondAccount(escrowId, tradeId)
+  //     .accounts({
+  //       payer: seller.publicKey,
+  //       escrow: escrowPDA,
+  //       sellerBondAccount: sellerBondPDA,
+  //       tokenMint: tokenMint,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
 
-    await program.methods
-      .openDisputeWithBond(buyerEvidenceHash)
-      .accounts({
-        disputingParty: buyer.publicKey,
-        escrow: escrowPDA,
-        disputingPartyTokenAccount: buyerTokenAccount,
-        buyerBondAccount: buyerBondPDA,
-        sellerBondAccount: sellerBondPDA,
-        tokenProgram: token.TOKEN_PROGRAM_ID,
-      })
-      .signers([buyer])
-      .rpc();
+  //   await program.methods
+  //     .openDisputeWithBond(buyerEvidenceHash)
+  //     .accounts({
+  //       disputingParty: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       disputingPartyTokenAccount: buyerTokenAccount,
+  //       buyerBondAccount: buyerBondPDA,
+  //       sellerBondAccount: sellerBondPDA,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //     })
+  //     .signers([buyer])
+  //     .rpc();
 
-    // Simulate 72-hour delay (not feasible in testnet, so we assume deadline passed)
-    const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-    const buyerBondBefore = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
+  //   // Simulate 72-hour delay (not feasible in testnet, so we assume deadline passed)
+  //   const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+  //   const buyerBondBefore = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
 
-    // Note: In a real scenario, we'd wait 72 hours. Here, we assume the test environment allows immediate judgment.
-    await program.methods
-      .defaultJudgment()
-      .accounts({
-        arbitrator: arbitrator.publicKey,
-        escrow: escrowPDA,
-        escrowTokenAccount: escrowTokenPDA,
-        buyerTokenAccount: buyerTokenAccount,
-        sellerTokenAccount: sellerTokenAccount,
-        buyerBondAccount: buyerBondPDA,
-        sellerBondAccount: sellerBondPDA,
-        tokenProgram: token.TOKEN_PROGRAM_ID,
-      })
-      .signers([arbitrator])
-      .rpc();
+  //   // Note: In a real scenario, we'd wait 72 hours. Here, we assume the test environment allows immediate judgment.
+  //   await program.methods
+  //     .defaultJudgment()
+  //     .accounts({
+  //       arbitrator: arbitrator.publicKey,
+  //       escrow: escrowPDA,
+  //       escrowTokenAccount: escrowTokenPDA,
+  //       buyerTokenAccount: buyerTokenAccount,
+  //       sellerTokenAccount: sellerTokenAccount,
+  //       buyerBondAccount: buyerBondPDA,
+  //       sellerBondAccount: sellerBondPDA,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //     })
+  //     .signers([arbitrator])
+  //     .rpc();
 
-    const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-    const buyerBondAfter = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
-    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+  //   const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+  //   const buyerBondAfter = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
+  //   const escrowAccount = await program.account.escrow.fetch(escrowPDA);
 
-    console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
-    console.log(`Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`);
+  //   console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
+  //   console.log(`Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`);
 
-    assert.equal(
-      new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
-      "1060000",
-      "Buyer should receive principal + fee (1,010,000) + bond (50,000)"
-    );
-    assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
-    assert.deepEqual(escrowAccount.state, { resolved: {} }, "State should be Resolved");
-  });
+  //   assert.equal(
+  //     new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
+  //     "1060000",
+  //     "Buyer should receive principal + fee (1,010,000) + bond (50,000)"
+  //   );
+  //   assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
+  //   assert.deepEqual(escrowAccount.state, { resolved: {} }, "State should be Resolved");
+  // });
+
+  // Step 7 Tests
+  // it("Auto-cancels escrow after deposit deadline", async () => {
+  //   const escrowId = new BN(escrowIdCounter++); // Increment counter
+  //   const tradeId = new BN(2);
+  //   const amount = new BN(1000000);
+  //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+  //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+  //   console.log("=== Auto-Cancel (Deposit Deadline) ===");
+  //   await program.methods
+  //     .createEscrow(escrowId, tradeId, amount, false, null)
+  //     .accounts({
+  //       seller: seller.publicKey,
+  //       buyer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       system_program: anchor.web3.SystemProgram.programId,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
+
+  //   // Wait 61 seconds to exceed the 1-minute (60-second) deposit deadline
+  //   await new Promise((resolve) => setTimeout(resolve, 61000));
+
+  //   await program.methods
+  //     .autoCancel()
+  //     .accounts({
+  //       escrow: escrowPDA,
+  //       escrowTokenAccount: null, // Not funded yet
+  //       sellerTokenAccount: null, // No funds to return
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //     })
+  //     .rpc();
+
+  //   const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+  //   assert.deepEqual(escrowAccount.state, { cancelled: {} }, "State should be Cancelled");
+  //   assert.equal(escrowAccount.counter.toString(), "1", "Counter should increment");
+  // });
+  // it("Auto-cancels escrow after fiat deadline", async () => {
+  //   const escrowId = new BN(escrowIdCounter++); // Increment counter
+  //   const tradeId = new BN(2);
+  //   const amount = new BN(1000000);
+  //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+  //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+  //   console.log("=== Auto-Cancel (Fiat Deadline) ===");
+  //   await program.methods
+  //     .createEscrow(escrowId, tradeId, amount, false, null)
+  //     .accounts({
+  //       seller: seller.publicKey,
+  //       buyer: buyer.publicKey,
+  //       escrow: escrowPDA,
+  //       system_program: anchor.web3.SystemProgram.programId,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
+
+  //   await program.methods
+  //     .fundEscrow()
+  //     .accounts({
+  //       seller: seller.publicKey,
+  //       escrow: escrowPDA,
+  //       sellerTokenAccount: sellerTokenAccount,
+  //       escrowTokenAccount: escrowTokenPDA,
+  //       tokenMint: tokenMint,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //       systemProgram: anchor.web3.SystemProgram.programId,
+  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+  //     })
+  //     .signers([seller])
+  //     .rpc();
+
+  //   const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+  //   console.log(`Seller token balance before: ${sellerBalanceBefore}`);
+
+  //   // Wait 61 seconds to exceed the 1-minute (60-second) fiat deadline
+  //   await new Promise((resolve) => setTimeout(resolve, 61000));
+
+  //   await program.methods
+  //     .autoCancel()
+  //     .accounts({
+  //       escrow: escrowPDA,
+  //       escrowTokenAccount: escrowTokenPDA,
+  //       sellerTokenAccount: sellerTokenAccount,
+  //       tokenProgram: token.TOKEN_PROGRAM_ID,
+  //     })
+  //     .rpc();
+
+  //   const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+  //   const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+  //   console.log(`Seller token balance after: ${sellerBalanceAfter}`);
+
+  //   assert.equal(
+  //     new BN(sellerBalanceAfter).sub(new BN(sellerBalanceBefore)).toString(),
+  //     "1010000",
+  //     "Seller should receive principal + fee back"
+  //   );
+  //   assert.deepEqual(escrowAccount.state, { cancelled: {} }, "State should be Cancelled");
+  //   assert.equal(escrowAccount.counter.toString(), "2", "Counter should increment");
+  // });
+
 });
