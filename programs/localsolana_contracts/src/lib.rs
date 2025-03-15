@@ -13,9 +13,14 @@ mod constants {
     // Dispute bond percentage (5%)
     pub const DISPUTE_BOND_BASIS_POINTS: u64 = 500; // 5% = 500 basis points
 
-    // Deadlines
+    // Production Deadlines
     pub const DEPOSIT_DEADLINE_MINUTES: i64 = 15; // 15 minutes from order initiation
     pub const FIAT_DEADLINE_MINUTES: i64 = 30;    // 30 minutes after funding
+
+    // Shorten deadlines for localnet testing
+    // pub const DEPOSIT_DEADLINE_MINUTES: i64 = 1;
+    // pub const FIAT_DEADLINE_MINUTES: i64 = 1;
+
     pub const DISPUTE_RESPONSE_DEADLINE_HOURS: i64 = 72; // 72 hours to respond to dispute
     pub const ARBITRATION_DEADLINE_HOURS: i64 = 168;     // 7 days for arbitrator to make decision
 
