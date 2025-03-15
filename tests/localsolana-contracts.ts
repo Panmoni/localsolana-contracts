@@ -1397,4 +1397,209 @@ describe("Localsolana Contracts Tests", () => {
   //   assert.equal(escrowAccount.counter.toString(), "2", "Counter should increment");
   // });
 
+
+  // Step 8: Edge Cases and Errors
+  it("Fails to create escrow with amount exceeding maximum", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const excessiveAmount = new BN(100000001); // 100.000001 USDC > 100 USDC max (6 decimals)
+
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+
+    console.log("=== Exceeds Maximum Amount ===");
+    try {
+      await program.methods
+        .createEscrow(escrowId, tradeId, excessiveAmount, false, null)
+        .accounts({
+          seller: seller.publicKey,
+          buyer: buyer.publicKey,
+          escrow: escrowPDA,
+          system_program: anchor.web3.SystemProgram.programId,
+        })
+        .signers([seller])
+        .rpc();
+      assert.fail("Should have thrown an error for exceeding maximum amount");
+    } catch (error: any) {
+      assert.include(
+        error.message,
+        "Amount exceeds maximum allowed",
+        "Expected AmountExceedsMaximum error"
+      );
+    }
+  });
+
+  it("Fails to fund escrow with unauthorized signer", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000); // 1 USDC
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+    console.log("=== Unauthorized Actions ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    try {
+      await program.methods
+        .fundEscrow()
+        .accounts({
+          seller: buyer.publicKey, // Wrong signer (buyer instead of seller)
+          escrow: escrowPDA,
+          sellerTokenAccount: sellerTokenAccount,
+          escrowTokenAccount: escrowTokenPDA,
+          tokenMint: tokenMint,
+          tokenProgram: token.TOKEN_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([buyer]) // Buyer signs instead of seller
+        .rpc();
+      assert.fail("Should have thrown an error for unauthorized signer");
+    } catch (error: any) {
+      assert.include(
+        error.message,
+        "A has one constraint was violated",
+        "Expected signer constraint violation"
+      );
+    }
+  });
+
+  it("Fails to fund escrow with insufficient funds", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000); // 1 USDC, total needed = 1,010,000 (principal + 1% fee)
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+    console.log("=== Insufficient Funds ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    // Reduce seller's token balance to below required amount (e.g., 500,000 < 1,010,000)
+    await token.setAuthority(
+      provider.connection,
+      seller,
+      sellerTokenAccount,
+      "AccountOwner",
+      seller.publicKey,
+      null // Revoke authority to prevent further minting
+    );
+    await token.mintTo(
+      provider.connection,
+      seller,
+      tokenMint,
+      sellerTokenAccount,
+      seller.publicKey,
+      500000 // Only 0.5 USDC, insufficient
+    );
+
+    try {
+      await program.methods
+        .fundEscrow()
+        .accounts({
+          seller: seller.publicKey,
+          escrow: escrowPDA,
+          sellerTokenAccount: sellerTokenAccount,
+          escrowTokenAccount: escrowTokenPDA,
+          tokenMint: tokenMint,
+          tokenProgram: token.TOKEN_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([seller])
+        .rpc();
+      assert.fail("Should have thrown an error for insufficient funds");
+    } catch (error: any) {
+      assert.include(
+        error.message,
+        "Insufficient funds",
+        "Expected InsufficientFunds error"
+      );
+    }
+  });
+
+  it("Fails to release sequential escrow without sequential address", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000); // 1 USDC
+    const sequentialAddress = Keypair.generate().publicKey;
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+    console.log("=== Missing Sequential Address ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, true, sequentialAddress)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .markFiatPaid()
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    try {
+      await program.methods
+        .releaseEscrow()
+        .accounts({
+          authority: seller.publicKey,
+          escrow: escrowPDA,
+          escrowTokenAccount: escrowTokenPDA,
+          buyerTokenAccount: buyerTokenAccount,
+          arbitratorTokenAccount: arbitratorTokenAccount,
+          sequentialEscrowTokenAccount: null, // Missing sequential address
+          tokenProgram: token.TOKEN_PROGRAM_ID,
+        })
+        .signers([seller])
+        .rpc();
+      assert.fail("Should have thrown an error for missing sequential address");
+    } catch (error: any) {
+      assert.include(
+        error.message,
+        "Sequential escrow requires a valid token account",
+        "Expected SequentialAddressMissing error"
+      );
+    }
+  });
+
 });
