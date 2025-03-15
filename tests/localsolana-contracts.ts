@@ -351,8 +351,12 @@ describe("Localsolana Contracts Tests", () => {
       .signers([buyer])
       .rpc();
 
-    const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-    const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+    const buyerBalanceBefore = (
+      await provider.connection.getTokenAccountBalance(buyerTokenAccount)
+    ).value.amount;
+    const arbitratorBalanceBefore = (
+      await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)
+    ).value.amount;
 
     await program.methods
       .releaseEscrow()
@@ -362,17 +366,26 @@ describe("Localsolana Contracts Tests", () => {
         escrowTokenAccount: escrowTokenPDA,
         buyerTokenAccount: buyerTokenAccount,
         arbitratorTokenAccount: arbitratorTokenAccount,
+        sequentialEscrowTokenAccount: null, // Add this
         tokenProgram: token.TOKEN_PROGRAM_ID,
       })
       .signers([seller])
       .rpc();
 
-    const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-    const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+    const buyerBalanceAfter = (
+      await provider.connection.getTokenAccountBalance(buyerTokenAccount)
+    ).value.amount;
+    const arbitratorBalanceAfter = (
+      await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)
+    ).value.amount;
     const escrowAccount = await program.account.escrow.fetch(escrowPDA);
 
-    console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
-    console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
+    console.log(
+      `Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`
+    );
+    console.log(
+      `Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`
+    );
 
     assert.equal(
       new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
@@ -380,12 +393,19 @@ describe("Localsolana Contracts Tests", () => {
       "Buyer should receive principal"
     );
     assert.equal(
-      new BN(arbitratorBalanceAfter).sub(new BN(arbitratorBalanceBefore)).toString(),
+      new BN(arbitratorBalanceAfter)
+        .sub(new BN(arbitratorBalanceBefore))
+        .toString(),
       "10000",
       "Arbitrator should receive fee"
     );
-    assert.deepEqual(escrowAccount.state, { released: {} }, "State should be Released");
+    assert.deepEqual(
+      escrowAccount.state,
+      { released: {} },
+      "State should be Released"
+    );
   });
+
 
   // Step 4 Tests
   it("Creates a sequential escrow", async () => {
