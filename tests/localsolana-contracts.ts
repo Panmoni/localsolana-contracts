@@ -9,7 +9,6 @@ import { LocalsolanaContracts } from "../target/types/localsolana_contracts";
 
 dotenv.config();
 
-// Helper: Load a keypair from a JSON file
 function loadKeypair(filePath: string): Keypair {
   const absolutePath = filePath.startsWith("~")
     ? path.join(process.env.HOME || process.env.USERPROFILE || ".", filePath.slice(1))
@@ -19,12 +18,10 @@ function loadKeypair(filePath: string): Keypair {
   return Keypair.fromSecretKey(secretKey);
 }
 
-// Load keypairs from .env file paths
 const seller = loadKeypair(process.env.SELLER_KEYPAIR || "");
 const buyer = loadKeypair(process.env.BUYER_KEYPAIR || "");
 const arbitrator = loadKeypair(process.env.ARBITRATOR_KEYPAIR || "");
 
-// Base values for escrow IDs
 let escrowIdCounter = 1;
 
 describe("Localsolana Contracts Tests", () => {
@@ -33,7 +30,6 @@ describe("Localsolana Contracts Tests", () => {
   const program = anchor.workspace.LocalsolanaContracts as Program<LocalsolanaContracts>;
   const expectedProgramId = new PublicKey("4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x");
 
-  // Helper to derive escrow PDA
   const deriveEscrowPDA = (escrowId: BN, tradeId: BN): [PublicKey, number] =>
     PublicKey.findProgramAddressSync(
       [
@@ -44,7 +40,6 @@ describe("Localsolana Contracts Tests", () => {
       program.programId
     );
 
-  // Helper to ensure sufficient funds
   async function ensureFunds(publicKey: PublicKey, minLamports: number = 4 * LAMPORTS_PER_SOL): Promise<void> {
     const balance = await provider.connection.getBalance(publicKey);
     console.log(`Balance for ${publicKey.toBase58()}: ${balance} lamports`);
@@ -64,7 +59,6 @@ describe("Localsolana Contracts Tests", () => {
       `Program ID mismatch: ${program.programId.toBase58()} != ${expectedProgramId.toBase58()}`
     );
 
-    // Fund all keypairs, including the upgrade authority (arbitrator)
     await Promise.all([
       ensureFunds(seller.publicKey),
       ensureFunds(buyer.publicKey),
@@ -75,7 +69,7 @@ describe("Localsolana Contracts Tests", () => {
   it("Creates a basic escrow", async () => {
     const escrowId = new BN(escrowIdCounter++);
     const tradeId = new BN(2);
-    const amount = new BN(1000000); // 1 USDC
+    const amount = new BN(1000000);
     const [escrowPDA, _bump] = deriveEscrowPDA(escrowId, tradeId);
 
     console.log("Creating escrow with PDA:", escrowPDA.toBase58());
@@ -166,9 +160,8 @@ describe("Localsolana Contracts Tests", () => {
         .rpc();
       assert.fail("Should have thrown an error for zero amount");
     } catch (error: any) {
-      const logs = await provider.connection.getTransaction(error.txid, { commitment: "confirmed" });
       assert.include(
-        logs?.meta?.logMessages?.join(""),
+        error.message,
         "Invalid amount: Zero or negative",
         "Expected InvalidAmount error"
       );
