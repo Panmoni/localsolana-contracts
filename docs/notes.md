@@ -2,39 +2,20 @@
 
 - get some good and complete tests
 
-- write this repo over top the current github one once all good
+## WalkThru
+- review code line by line before putting on devnet
 
-## add to tests
+### clear devnet deployment
 
-Additional Updates Needed
-To fully cover the new contract, you should add tests for:
-SPL Token Interactions:
-Test fund_escrow with token accounts (requires setting up a mint and token accounts).
+https://explorer.solana.com/address/4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x?cluster=devnet
 
-Example:
-typescript
+will need to clear this
 
-it("Funds an escrow", async () => {
-  // Setup token mint and accounts, then call fund_escrow
-});
+## Presentation
+- make a mermaid chart for this or use solidity one?
+- detailed readme
 
-Dispute Workflow:
-Test open_dispute_with_bond, respond_to_dispute_with_bond, default_judgment, and resolve_dispute_with_explanation.
-
-Requires funding the escrow and initializing bond accounts.
-
-Deadline Enforcement:
-Simulate time passing (mock Clock) to test DepositDeadlineExpired and FiatDeadlineExpired.
-
-Sequential Release:
-Test release_escrow with a sequential address.
-
-Cancellation:
-Test cancel_escrow and auto_cancel scenarios.
-
-
-
-## contract improvements
+## Post MVP
 - Consider adding InvalidTokenMint for token-related CPI calls to catch mint mismatches explicitly.
 - TODO: Remove #[derive(Debug)] once you’re confident Borsh serialization is stable (it’s only needed for debugging). from escrow struct
 
@@ -102,9 +83,16 @@ In release_escrow, verify sequential_escrow_token_account mint matches escrow_to
 Space Optimization:
 If compute units become an issue, calculate exact serialized size (331 bytes max) instead of std::mem::size_of::<Escrow>() (~336 bytes with padding).
 
+## Ref
 
+### Inspect
 
-## Build, Deploy, Test Routine
+solana account 53Mz4ZLrNDBL1wqvJBhfSuXW8Pg1ND8vwxWoTwGwPAU5 --url http://localhost:8899
+
+### Transfer
+solana transfer --from /home/george5492/.config/solana/id.json 9KxEUVkoJVrE2nKadJomSNkgSsksgGvRavSJy3eJUdtQ 1 --allow-unfunded-recipient --url devnet
+
+### Build, Deploy, Test Routine
 anchor clean
 cargo clean
 mkdir -p target/deploy
@@ -115,32 +103,3 @@ anchor build
 solana-test-validator
 anchor deploy
 anchor test --skip-local-validator
-
-## WalkThru
-- review code line by line before putting on devnet
-
-## Presentation
-- make a mermaid chart for this or use solidity one?
-- detailed readme
-
-## Ref
-
-### transfer
-solana transfer --from /home/george5492/.config/solana/id.json 9KxEUVkoJVrE2nKadJomSNkgSsksgGvRavSJy3eJUdtQ 1 --allow-unfunded-recipient --url devnet
-
-### Deployment on devnet
-
-https://explorer.solana.com/address/4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x?cluster=devnet
-
-will need to clear this
-
-### Deploy
-`anchor build`
-
-<!-- Copy the program keypair to the deploy directory -->
-`cp keys/program-devnet/program-keypair.json target/deploy/localsolana_contracts-keypair.json`
-
-<!-- Deploy using funded wallet to pay -->
-```solana program deploy target/deploy/localsolana_contracts.so \
-  --program-id keys/program-devnet/program-keypair.json \
-  --keypair keys/devnet/program-keypair.json```
