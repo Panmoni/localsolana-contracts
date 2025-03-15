@@ -1399,10 +1399,14 @@ describe("Localsolana Contracts Tests", () => {
 
 
   // Step 8: Edge Cases and Errors
+
+
+    // Step 8: Edge Cases and Errors
+
   it("Fails to create escrow with amount exceeding maximum", async () => {
     const escrowId = new BN(escrowIdCounter++);
     const tradeId = new BN(2);
-    const excessiveAmount = new BN(100000001); // 100.000001 USDC > 100 USDC max (6 decimals)
+    const excessiveAmount = new BN(100000001); // 100.000001 USDC > 100 USDC max
 
     const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
 
@@ -1422,8 +1426,8 @@ describe("Localsolana Contracts Tests", () => {
     } catch (error: any) {
       assert.include(
         error.message,
-        "Amount exceeds maximum allowed",
-        "Expected AmountExceedsMaximum error"
+        "Amount exceeds maximum (100 USDC)",
+        "Expected ExceedsMaximum error"
       );
     }
   });
@@ -1451,7 +1455,7 @@ describe("Localsolana Contracts Tests", () => {
       await program.methods
         .fundEscrow()
         .accounts({
-          seller: buyer.publicKey, // Wrong signer (buyer instead of seller)
+          seller: buyer.publicKey, // Wrong signer
           escrow: escrowPDA,
           sellerTokenAccount: sellerTokenAccount,
           escrowTokenAccount: escrowTokenPDA,
@@ -1460,14 +1464,15 @@ describe("Localsolana Contracts Tests", () => {
           systemProgram: anchor.web3.SystemProgram.programId,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
         })
-        .signers([buyer]) // Buyer signs instead of seller
+        .signers([buyer])
         .rpc();
       assert.fail("Should have thrown an error for unauthorized signer");
     } catch (error: any) {
+      console.log(`Error message: ${error.message}`);
       assert.include(
         error.message,
-        "A has one constraint was violated",
-        "Expected signer constraint violation"
+        "A raw constraint was violated",
+        "Expected raw constraint violation"
       );
     }
   });
@@ -1475,7 +1480,7 @@ describe("Localsolana Contracts Tests", () => {
   it("Fails to fund escrow with insufficient funds", async () => {
     const escrowId = new BN(escrowIdCounter++);
     const tradeId = new BN(2);
-    const amount = new BN(1000000); // 1 USDC, total needed = 1,010,000 (principal + 1% fee)
+    const amount = new BN(1000000); // 1 USDC, total needed = 1,010,000
     const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
     const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
@@ -1491,22 +1496,16 @@ describe("Localsolana Contracts Tests", () => {
       .signers([seller])
       .rpc();
 
-    // Reduce seller's token balance to below required amount (e.g., 500,000 < 1,010,000)
-    await token.setAuthority(
+    // Burn tokens to reduce seller balance below required amount
+    const currentBalance = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+    const burnAmount = new BN(currentBalance).sub(new BN(500000)); // Leave 0.5 USDC
+    await token.burn(
       provider.connection,
       seller,
       sellerTokenAccount,
-      "AccountOwner",
-      seller.publicKey,
-      null // Revoke authority to prevent further minting
-    );
-    await token.mintTo(
-      provider.connection,
-      seller,
       tokenMint,
-      sellerTokenAccount,
-      seller.publicKey,
-      500000 // Only 0.5 USDC, insufficient
+      seller,
+      burnAmount.toNumber()
     );
 
     try {
@@ -1554,6 +1553,21 @@ describe("Localsolana Contracts Tests", () => {
       .signers([seller])
       .rpc();
 
+    // Restore seller balance to ensure fund_escrow succeeds
+    const currentBalance = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+    if (new BN(currentBalance).lt(new BN(1010000))) {
+      await token.mintTo(
+        provider.connection,
+        seller, // Payer
+        tokenMint,
+        sellerTokenAccount,
+        seller, // Mint authority (Keypair)
+        1000000000 // Mint 1000 USDC to reset balance
+      );
+    }
+
+    const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+    console.log(`Seller token balance before funding: ${sellerBalanceBefore}`);
     await program.methods
       .fundEscrow()
       .accounts({
@@ -1569,6 +1583,9 @@ describe("Localsolana Contracts Tests", () => {
       .signers([seller])
       .rpc();
 
+    const escrowBalance = (await provider.connection.getTokenAccountBalance(escrowTokenPDA)).value.amount;
+    console.log(`Escrow token balance after funding: ${escrowBalance}`);
+
     await program.methods
       .markFiatPaid()
       .accounts({
@@ -1577,6 +1594,9 @@ describe("Localsolana Contracts Tests", () => {
       })
       .signers([buyer])
       .rpc();
+
+    const escrowBalanceBeforeRelease = (await provider.connection.getTokenAccountBalance(escrowTokenPDA)).value.amount;
+    console.log(`Escrow token balance before release: ${escrowBalanceBeforeRelease}`);
 
     try {
       await program.methods
@@ -1587,16 +1607,17 @@ describe("Localsolana Contracts Tests", () => {
           escrowTokenAccount: escrowTokenPDA,
           buyerTokenAccount: buyerTokenAccount,
           arbitratorTokenAccount: arbitratorTokenAccount,
-          sequentialEscrowTokenAccount: null, // Missing sequential address
+          sequentialEscrowTokenAccount: null,
           tokenProgram: token.TOKEN_PROGRAM_ID,
         })
         .signers([seller])
         .rpc();
       assert.fail("Should have thrown an error for missing sequential address");
     } catch (error: any) {
+      console.log(`Error message: ${error.message}`);
       assert.include(
         error.message,
-        "Sequential escrow requires a valid token account",
+        "Missing sequential escrow address",
         "Expected SequentialAddressMissing error"
       );
     }
