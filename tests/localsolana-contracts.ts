@@ -158,6 +158,7 @@ describe("Localsolana Contracts Tests", () => {
     console.log("Buyer token balance:", buyerBalance.value.uiAmount);
   });
 
+  // Step 3 Tests
   it("Creates a basic escrow", async () => {
     const escrowId = new BN(escrowIdCounter++);
     const tradeId = new BN(2);
@@ -206,6 +207,187 @@ describe("Localsolana Contracts Tests", () => {
     assert.isNull(escrowAccount.disputeResolutionHash, "Resolution hash should be null");
   });
 
+  it("Funds the escrow", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+    console.log("=== Escrow Funding ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+    console.log(`Seller token balance before: ${sellerBalanceBefore}`);
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+    const escrowBalance = (await provider.connection.getTokenAccountBalance(escrowTokenPDA)).value.amount;
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+    console.log(`Seller token balance after: ${sellerBalanceAfter}`);
+    console.log(`Escrow token balance: ${escrowBalance}`);
+
+    assert.equal(
+      new BN(sellerBalanceBefore).sub(new BN(sellerBalanceAfter)).toString(),
+      "1010000",
+      "Incorrect amount transferred from seller"
+    );
+    assert.equal(escrowBalance, "1010000", "Escrow balance incorrect");
+    assert.deepEqual(escrowAccount.state, { funded: {} }, "State should be Funded");
+    assert(escrowAccount.fiatDeadline > 0, "Fiat deadline should be set");
+  });
+
+  it("Marks fiat paid", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+    console.log("=== Escrow Funding and Marking Paid ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .markFiatPaid()
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+    assert.isTrue(escrowAccount.fiatPaid, "Fiat paid should be true");
+  });
+
+  it("Releases the escrow", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+    console.log("=== Escrow Full Flow ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, false, null)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .markFiatPaid()
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+    const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+
+    await program.methods
+      .releaseEscrow()
+      .accounts({
+        authority: seller.publicKey,
+        escrow: escrowPDA,
+        escrowTokenAccount: escrowTokenPDA,
+        buyerTokenAccount: buyerTokenAccount,
+        arbitratorTokenAccount: arbitratorTokenAccount,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+      })
+      .signers([seller])
+      .rpc();
+
+    const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+    const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+    console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
+    console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
+
+    assert.equal(
+      new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
+      "1000000",
+      "Buyer should receive principal"
+    );
+    assert.equal(
+      new BN(arbitratorBalanceAfter).sub(new BN(arbitratorBalanceBefore)).toString(),
+      "10000",
+      "Arbitrator should receive fee"
+    );
+    assert.deepEqual(escrowAccount.state, { released: {} }, "State should be Released");
+  });
+
+  // Step 4 Tests
   it("Creates a sequential escrow", async () => {
     const escrowId = new BN(escrowIdCounter++);
     const tradeId = new BN(2);
@@ -261,5 +443,131 @@ describe("Localsolana Contracts Tests", () => {
         "Expected InvalidAmount error"
       );
     }
+  });
+
+  it("Updates sequential address", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const initialSequentialAddress = Keypair.generate().publicKey;
+    const newSequentialAddress = Keypair.generate().publicKey;
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+
+    console.log("=== Sequential Escrow Update ===");
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, true, initialSequentialAddress)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .updateSequentialAddress(newSequentialAddress)
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+    assert.equal(
+      escrowAccount.sequentialEscrowAddress?.toBase58(),
+      newSequentialAddress.toBase58(),
+      "Sequential address should be updated"
+    );
+  });
+
+  it("Releases to sequential address", async () => {
+    const escrowId = new BN(escrowIdCounter++);
+    const tradeId = new BN(2);
+    const amount = new BN(1000000);
+    const sequentialAddress = Keypair.generate().publicKey;
+    const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+    const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+    console.log("=== Sequential Escrow Release ===");
+    const sequentialTokenAccount = await token.createAccount(
+      provider.connection,
+      seller,
+      tokenMint,
+      sequentialAddress
+    );
+    console.log("Sequential token account:", sequentialTokenAccount.toBase58());
+
+    await program.methods
+      .createEscrow(escrowId, tradeId, amount, true, sequentialAddress)
+      .accounts({
+        seller: seller.publicKey,
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+        system_program: anchor.web3.SystemProgram.programId,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .fundEscrow()
+      .accounts({
+        seller: seller.publicKey,
+        escrow: escrowPDA,
+        sellerTokenAccount: sellerTokenAccount,
+        escrowTokenAccount: escrowTokenPDA,
+        tokenMint: tokenMint,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      })
+      .signers([seller])
+      .rpc();
+
+    await program.methods
+      .markFiatPaid()
+      .accounts({
+        buyer: buyer.publicKey,
+        escrow: escrowPDA,
+      })
+      .signers([buyer])
+      .rpc();
+
+    const sequentialBalanceBefore = (await provider.connection.getTokenAccountBalance(sequentialTokenAccount)).value.amount;
+    const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+
+    await program.methods
+      .releaseEscrow()
+      .accounts({
+        authority: seller.publicKey,
+        escrow: escrowPDA,
+        escrowTokenAccount: escrowTokenPDA,
+        buyerTokenAccount: buyerTokenAccount,
+        arbitratorTokenAccount: arbitratorTokenAccount,
+        sequentialEscrowTokenAccount: sequentialTokenAccount,
+        tokenProgram: token.TOKEN_PROGRAM_ID,
+      })
+      .signers([seller])
+      .rpc();
+
+    const sequentialBalanceAfter = (await provider.connection.getTokenAccountBalance(sequentialTokenAccount)).value.amount;
+    const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+    const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+
+    console.log(`Sequential balance before: ${sequentialBalanceBefore}, after: ${sequentialBalanceAfter}`);
+    console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
+
+    assert.equal(
+      new BN(sequentialBalanceAfter).sub(new BN(sequentialBalanceBefore)).toString(),
+      "1000000",
+      "Sequential account should receive principal"
+    );
+    assert.equal(
+      new BN(arbitratorBalanceAfter).sub(new BN(arbitratorBalanceBefore)).toString(),
+      "10000",
+      "Arbitrator should receive fee"
+    );
+    assert.deepEqual(escrowAccount.state, { released: {} }, "State should be Released");
   });
 });
