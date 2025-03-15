@@ -22,6 +22,11 @@ const seller = loadKeypair(process.env.SELLER_KEYPAIR || "");
 const buyer = loadKeypair(process.env.BUYER_KEYPAIR || "");
 const arbitrator = loadKeypair(process.env.ARBITRATOR_KEYPAIR || "");
 
+// Ensure keypairs are loading correctly:
+console.log("Seller pubkey:", seller.publicKey.toBase58());
+console.log("Buyer pubkey:", buyer.publicKey.toBase58());
+console.log("Arbitrator pubkey:", arbitrator.publicKey.toBase58());
+
 let escrowIdCounter = 1;
 
 describe("Localsolana Contracts Tests", () => {
