@@ -6,6 +6,7 @@ import * as dotenv from "dotenv";
 import * as fs from "fs";
 import * as path from "path";
 import { LocalsolanaContracts } from "../target/types/localsolana_contracts";
+import * as token from "@solana/spl-token";
 
 dotenv.config();
 
@@ -26,6 +27,12 @@ const arbitrator = loadKeypair(process.env.ARBITRATOR_KEYPAIR || "");
 console.log("Seller pubkey:", seller.publicKey.toBase58());
 console.log("Buyer pubkey:", buyer.publicKey.toBase58());
 console.log("Arbitrator pubkey:", arbitrator.publicKey.toBase58());
+
+// add token global variablesf for token testing (USDC mimicking)
+let tokenMint: PublicKey;
+let sellerTokenAccount: PublicKey;
+let buyerTokenAccount: PublicKey;
+let arbitratorTokenAccount: PublicKey;
 
 let escrowIdCounter = 1;
 
@@ -69,6 +76,64 @@ describe("Localsolana Contracts Tests", () => {
       ensureFunds(buyer.publicKey),
       ensureFunds(arbitrator.publicKey),
     ]);
+
+    // Token Setup
+    console.log("Creating token mint...");
+    tokenMint = await token.createMint(
+      provider.connection,
+      seller,           // Payer for the transaction
+      seller.publicKey, // Mint authority
+      null,             // Freeze authority (null = none)
+      6                 // Decimals (USDC-like)
+    );
+    console.log("Token mint created:", tokenMint.toBase58());
+
+    console.log("Creating seller token account...");
+    sellerTokenAccount = await token.createAccount(
+      provider.connection,
+      seller,           // Payer
+      tokenMint,        // Mint
+      seller.publicKey  // Owner
+    );
+    console.log("Seller token account:", sellerTokenAccount.toBase58());
+
+    console.log("Creating buyer token account...");
+    buyerTokenAccount = await token.createAccount(
+      provider.connection,
+      buyer,
+      tokenMint,
+      buyer.publicKey
+    );
+    console.log("Buyer token account:", buyerTokenAccount.toBase58());
+
+    console.log("Creating arbitrator token account...");
+    arbitratorTokenAccount = await token.createAccount(
+      provider.connection,
+      arbitrator,
+      tokenMint,
+      arbitrator.publicKey
+    );
+    console.log("Arbitrator token account:", arbitratorTokenAccount.toBase58());
+
+    console.log("Minting tokens to seller...");
+    await token.mintTo(
+      provider.connection,
+      seller,           // Payer
+      tokenMint,        // Mint
+      sellerTokenAccount, // Destination
+      seller.publicKey, // Mint authority
+      1000000000        // Amount (1000 tokens = 1,000,000,000 lamports with 6 decimals)
+    );
+
+    console.log("Minting tokens to buyer...");
+    await token.mintTo(
+      provider.connection,
+      buyer,
+      tokenMint,
+      buyerTokenAccount,
+      buyer.publicKey,  // Using buyer as signer (assuming they have mint authority or adjust accordingly)
+      1000000000
+    );
   });
 
   it("Creates a basic escrow", async () => {
