@@ -1159,6 +1159,7 @@ pub mod localsolana_contracts {
 #[derive(Accounts)] // Applied to structs to indicate a list of accounts required by an instruction
 #[instruction(escrow_id: u64, trade_id: u64, amount: u64, sequential: bool, sequential_escrow_address: Option<Pubkey>)]
 // REQUIRED: seller, buyer, escrow (account), system_program
+// this is the escrow _state_ account
 pub struct CreateEscrow<'info> {
     // pass in mutable account
     #[account(mut)]
@@ -1183,6 +1184,7 @@ pub struct CreateEscrow<'info> {
 }
 
 #[derive(Accounts)]
+// this is the escrow _token_ account
 pub struct FundEscrow<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
@@ -1206,7 +1208,8 @@ pub struct FundEscrow<'info> {
     #[account(
         // probably remove init_if_needed in next iteration.
         // https://www.rareskills.io/post/init-if-needed-anchor
-        init_if_needed,
+        // init_if_needed,
+        init,
         payer = seller,
         seeds = [b"escrow_token", escrow.key().as_ref()],
         bump,
