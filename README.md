@@ -132,7 +132,7 @@ Events are emitted for key actions (e.g., `EscrowCreated`, `FundsDeposited`, `Di
 #### Flow Chart
 ```mermaid
 graph TD
-    A[Start] -->|Seller Initiates| B[Create Escrow (State: Created)]
+    A[Start] -->|Seller Initiates| B[Create Escrow State: Created]
     B -->|15 min deadline| C{Fund Escrow?}
 
     %% Funding Path
