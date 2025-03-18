@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, Transfer};
+use anchor_spl::token::{self, Token, Transfer, CloseAccount};
 
 declare_id!("4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x");
 
@@ -369,6 +369,23 @@ pub mod localsolana_contracts {
 
         token::transfer(principal_transfer_context, amount)?;
 
+        // Updated: Close escrow_token_account, refund rent to seller
+        let close_token_context = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: ctx.accounts.escrow_token_account.to_account_info(),
+                destination: ctx.accounts.authority.to_account_info(), // Seller or arbitrator, refund here
+                authority: ctx.accounts.escrow_token_account.to_account_info(),
+            },
+            signer_seeds,
+        );
+        token::close_account(close_token_context)?;
+
+        // Updated: Close escrow state account, refund rent to seller
+        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
+        **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() = 0;
+        **ctx.accounts.authority.to_account_info().lamports.borrow_mut() += escrow_lamports;
+
         // Figure out destination for event
         let destination = if is_sequential {
             ctx.accounts.escrow.sequential_escrow_address.unwrap()
@@ -457,7 +474,24 @@ pub mod localsolana_contracts {
             );
 
             token::transfer(transfer_context, total_amount)?;
+
+            // Updated: Close escrow_token_account
+            let close_token_context = CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                CloseAccount {
+                    account: escrow_token_account.to_account_info(),
+                    destination: ctx.accounts.authority.to_account_info(),
+                    authority: escrow_token_account.to_account_info(),
+                },
+                signer_seeds,
+            );
+            token::close_account(close_token_context)?;
         }
+
+        // Updated: Close escrow state account (funded or not)
+        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
+        **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() = 0;
+        **ctx.accounts.authority.to_account_info().lamports.borrow_mut() += escrow_lamports;
 
         // Update escrow state
         let escrow = &mut ctx.accounts.escrow;

@@ -352,8 +352,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
 
-      const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-      const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+      const buyerBalanceBefore = (
+        await provider.connection.getTokenAccountBalance(buyerTokenAccount)
+      ).value.amount;
+      const arbitratorBalanceBefore = (
+        await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)
+      ).value.amount;
+      const sellerLamportsBefore = await provider.connection.getBalance(
+        seller.publicKey
+      );
 
       await program.methods
         .releaseEscrow()
@@ -369,12 +376,25 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
 
-      const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-      const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
-      const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+      const buyerBalanceAfter = (
+        await provider.connection.getTokenAccountBalance(buyerTokenAccount)
+      ).value.amount;
+      const arbitratorBalanceAfter = (
+        await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)
+      ).value.amount;
+      const sellerLamportsAfter = await provider.connection.getBalance(
+        seller.publicKey
+      );
 
-      console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
-      console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
+      console.log(
+        `Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`
+      );
+      console.log(
+        `Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`
+      );
+      console.log(
+        `Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`
+      );
 
       assert.equal(
         new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
@@ -382,12 +402,27 @@ describe("Localsolana Contracts Tests", () => {
         "Buyer should receive principal"
       );
       assert.equal(
-        new BN(arbitratorBalanceAfter).sub(new BN(arbitratorBalanceBefore)).toString(),
+        new BN(arbitratorBalanceAfter)
+          .sub(new BN(arbitratorBalanceBefore))
+          .toString(),
         "10000",
         "Arbitrator should receive fee"
       );
-      assert.deepEqual(escrowAccount.state, { released: {} }, "State should be Released");
+      assert.isTrue(
+        sellerLamportsAfter > sellerLamportsBefore,
+        "Seller should receive rent refund"
+      );
+      // Optional: Check accounts are closed (will fail if not closed)
+      assert.isNull(
+        await provider.connection.getAccountInfo(escrowTokenPDA),
+        "Escrow token account should be closed"
+      );
+      assert.isNull(
+        await provider.connection.getAccountInfo(escrowPDA),
+        "Escrow state account should be closed"
+      );
     });
+
   });
 
   describe("Sequential Escrow Operations", () => {
@@ -595,22 +630,40 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
 
+      const sellerLamportsBefore = await provider.connection.getBalance(
+        seller.publicKey
+      );
+
       await program.methods
         .cancelEscrow()
         .accounts({
           authority: seller.publicKey,
           escrow: escrowPDA,
-          escrowTokenAccount: null,
+          escrowTokenAccount: null, // Not funded yet
           sellerTokenAccount: null,
           tokenProgram: token.TOKEN_PROGRAM_ID,
         })
         .signers([seller])
         .rpc();
 
-      const escrowAccount = await program.account.escrow.fetch(escrowPDA);
-      assert.deepEqual(escrowAccount.state, { cancelled: {} }, "State should be Cancelled");
-      assert.equal(escrowAccount.counter.toString(), "1", "Counter should increment");
+      const sellerLamportsAfter = await provider.connection.getBalance(
+        seller.publicKey
+      );
+
+      console.log(
+        `Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`
+      );
+
+      assert.isTrue(
+        sellerLamportsAfter > sellerLamportsBefore,
+        "Seller should receive rent refund for escrow state account"
+      );
+      assert.isNull(
+        await provider.connection.getAccountInfo(escrowPDA),
+        "Escrow state account should be closed"
+      );
     });
+
 
     it("Cancels escrow after funding", async () => {
       const escrowId = new BN(escrowIdCounter++);
@@ -647,7 +700,7 @@ describe("Localsolana Contracts Tests", () => {
         .rpc();
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-      console.log(`Seller token balance before: ${sellerBalanceBefore}`);
+      const sellerLamportsBefore = await provider.connection.getBalance(seller.publicKey);
 
       await program.methods
         .cancelEscrow()
@@ -662,17 +715,22 @@ describe("Localsolana Contracts Tests", () => {
         .rpc();
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-      const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+      const sellerLamportsAfter = await provider.connection.getBalance(seller.publicKey);
 
-      console.log(`Seller token balance after: ${sellerBalanceAfter}`);
+      console.log(`Seller token balance before: ${sellerBalanceBefore}, after: ${sellerBalanceAfter}`);
+      console.log(`Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`);
 
       assert.equal(
         new BN(sellerBalanceAfter).sub(new BN(sellerBalanceBefore)).toString(),
         "1010000",
         "Seller should receive principal + fee back"
       );
-      assert.deepEqual(escrowAccount.state, { cancelled: {} }, "State should be Cancelled");
-      assert.equal(escrowAccount.counter.toString(), "2", "Counter should increment");
+      assert.isTrue(
+        sellerLamportsAfter > sellerLamportsBefore,
+        "Seller should receive rent refund"
+      );
+      assert.isNull(await provider.connection.getAccountInfo(escrowTokenPDA), "Escrow token account should be closed");
+      assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
     });
 
     it("Fails to cancel escrow after fiat paid", async () => {
