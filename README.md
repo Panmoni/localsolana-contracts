@@ -218,4 +218,4 @@ graph TD
 This is based on the YapBay Sequential Escrow System. https://YapBay.com
 
 ## License
-This contract is provided as-is, with no explicit license specified. Use and modify at your own risk.
+This contract is provided as-is, under the MIT license. Use and modify at your own risk.
