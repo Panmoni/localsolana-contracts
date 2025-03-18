@@ -1621,6 +1621,69 @@ describe("Localsolana Contracts Tests", () => {
         );
       }
     });
+
+    it("Fails to fund escrow twice (reinitialization prevented)", async () => {
+      const escrowId = new BN(escrowIdCounter++);
+      const tradeId = new BN(2);
+      const amount = new BN(1000000); // 1 USDC
+      const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+      const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+      console.log("=== Reinitialization Prevention ===");
+      await program.methods
+        .createEscrow(escrowId, tradeId, amount, false, null)
+        .accounts({
+          seller: seller.publicKey,
+          buyer: buyer.publicKey,
+          escrow: escrowPDA,
+          system_program: anchor.web3.SystemProgram.programId,
+        })
+        .signers([seller])
+        .rpc();
+
+      // First fund_escrow call (should succeed)
+      await program.methods
+        .fundEscrow()
+        .accounts({
+          seller: seller.publicKey,
+          escrow: escrowPDA,
+          sellerTokenAccount: sellerTokenAccount,
+          escrowTokenAccount: escrowTokenPDA,
+          tokenMint: tokenMint,
+          tokenProgram: token.TOKEN_PROGRAM_ID,
+          systemProgram: anchor.web3.SystemProgram.programId,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([seller])
+        .rpc();
+
+      // Second fund_escrow call (should fail due to init)
+      try {
+        await program.methods
+          .fundEscrow()
+          .accounts({
+            seller: seller.publicKey,
+            escrow: escrowPDA,
+            sellerTokenAccount: sellerTokenAccount,
+            escrowTokenAccount: escrowTokenPDA,
+            tokenMint: tokenMint,
+            tokenProgram: token.TOKEN_PROGRAM_ID,
+            systemProgram: anchor.web3.SystemProgram.programId,
+            rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+          })
+          .signers([seller])
+          .rpc();
+        assert.fail("Should have thrown an error for reinitializing escrow_token_account");
+      } catch (error: any) {
+        console.log(`Error message: ${error.message}`);
+        assert.include(
+          error.message,
+          "custom program error: 0x0",
+          "Expected account already in use error"
+        );
+      }
+    });
+
   });
 
 });
