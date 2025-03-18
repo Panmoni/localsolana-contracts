@@ -89,9 +89,9 @@ pub mod localsolana_contracts {
     ) -> Result<()> {
 
         // debugging borsch
-        msg!("Escrow size (memory): {}", std::mem::size_of::<Escrow>());
-        msg!("Allocated space: {}", ctx.accounts.escrow.to_account_info().data_len()); // Should be 337
-        msg!("Starting initialization");
+        // msg!("Escrow size (memory): {}", std::mem::size_of::<Escrow>());
+        // msg!("Allocated space: {}", ctx.accounts.escrow.to_account_info().data_len()); // Should be 337
+        // msg!("Starting initialization");
 
         // Validate amount
         require!(amount > 0, EscrowError::InvalidAmount);
@@ -123,7 +123,7 @@ pub mod localsolana_contracts {
 
         // Initialize escrow
         let escrow = &mut ctx.accounts.escrow;
-        msg!("Before escrow assignment");
+        // msg!("Before escrow assignment");
         escrow.escrow_id = escrow_id;
         escrow.trade_id = trade_id;
         escrow.seller = seller_key;
@@ -143,10 +143,10 @@ pub mod localsolana_contracts {
         escrow.dispute_evidence_hash_buyer = None;
         escrow.dispute_evidence_hash_seller = None;
         escrow.dispute_resolution_hash = None;
-        msg!("After escrow assignment");
+        // msg!("After escrow assignment");
 
         // Log the escrow data after initialization
-        msg!("Escrow data: {:?}", escrow);
+        // msg!("Escrow data: {:?}", escrow);
 
         // Get escrow key for event
         let escrow_key = escrow.key();
@@ -1159,7 +1159,7 @@ pub mod localsolana_contracts {
 #[derive(Accounts)] // Applied to structs to indicate a list of accounts required by an instruction
 #[instruction(escrow_id: u64, trade_id: u64, amount: u64, sequential: bool, sequential_escrow_address: Option<Pubkey>)]
 // REQUIRED: seller, buyer, escrow (account), system_program
-// this is the escrow _state_ account
+// this is the escrow _state_ account ("rulebook")
 pub struct CreateEscrow<'info> {
     // pass in mutable account
     #[account(mut)]
@@ -1184,7 +1184,7 @@ pub struct CreateEscrow<'info> {
 }
 
 #[derive(Accounts)]
-// this is the escrow _token_ account
+// this is the escrow _token_ account ("vault")
 pub struct FundEscrow<'info> {
     #[account(mut)]
     pub seller: Signer<'info>,
@@ -1580,8 +1580,7 @@ pub struct AutoCancel<'info> {
 
 // Applied to structs to create custom account types for the program
 #[account]
-// TODO: clear this debug after fixing borsch issue
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Escrow {
     pub escrow_id: u64,
     pub trade_id: u64,
@@ -1605,8 +1604,7 @@ pub struct Escrow {
     pub dispute_resolution_hash: Option<[u8; 32]>
 }
 
-// TODO: remove Debug from derive after fixing borsch error
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Debug)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
 pub enum EscrowState {
     Created,
     Funded,
