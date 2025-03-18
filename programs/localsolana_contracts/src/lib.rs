@@ -31,6 +31,8 @@ mod constants {
     // Other constants
     pub const SECONDS_PER_MINUTE: i64 = 60;
     pub const SECONDS_PER_HOUR: i64 = 3600;
+
+    pub const MAX_U64: u64 = u64::MAX; // 18,446,744,073,709,551,615
 }
 
 // Custom error codes
@@ -186,10 +188,12 @@ pub mod localsolana_contracts {
         let fee = ctx.accounts.escrow.fee;
         let escrow_id = ctx.accounts.escrow.escrow_id;
         let trade_id = ctx.accounts.escrow.trade_id;
+        use constants::MAX_U64;
 
         let total_amount = amount
             .checked_add(fee)
-            .ok_or(EscrowError::FeeCalculationError)?;
+            .ok_or(EscrowError::FeeCalculationError)?
+            .min(MAX_U64);
 
         // Ensure provided token account has sufficient funds
         require!(
@@ -435,6 +439,7 @@ pub mod localsolana_contracts {
         let escrow_id = ctx.accounts.escrow.escrow_id;
         let trade_id = ctx.accounts.escrow.trade_id;
         let seller = ctx.accounts.escrow.seller;
+        use constants::MAX_U64;
 
         // If escrow is funded, return funds to seller
         if current_state == EscrowState::Funded {
@@ -447,7 +452,8 @@ pub mod localsolana_contracts {
 
             let total_amount = amount
                 .checked_add(fee)
-                .ok_or(EscrowError::FeeCalculationError)?;
+                .ok_or(EscrowError::FeeCalculationError)?
+                .min(MAX_U64);
 
             let escrow_token_bump = ctx.bumps.escrow_token_account;
             let seeds = &[
@@ -759,16 +765,19 @@ pub mod localsolana_contracts {
         // Calculate bond amount and total amount
         let amount = ctx.accounts.escrow.amount;
         let fee = ctx.accounts.escrow.fee;
+        use constants::MAX_U64;
 
         let total_amount = amount
             .checked_add(fee)
-            .ok_or(EscrowError::FeeCalculationError)?;
+            .ok_or(EscrowError::FeeCalculationError)?
+            .min(MAX_U64);
 
         let bond_amount = amount
             .checked_mul(DISPUTE_BOND_BASIS_POINTS)
             .ok_or(EscrowError::FeeCalculationError)?
             .checked_div(10000)
-            .ok_or(EscrowError::FeeCalculationError)?;
+            .ok_or(EscrowError::FeeCalculationError)?
+            .min(MAX_U64);
 
         // Determine winning account
         let winning_token_account = if winner == escrow_buyer {
@@ -917,13 +926,15 @@ pub mod localsolana_contracts {
         let escrow_key = ctx.accounts.escrow.key();
         let is_sequential = ctx.accounts.escrow.sequential;
         let sequential_escrow_address = ctx.accounts.escrow.sequential_escrow_address;
+        use constants::MAX_U64;
 
         // Calculate bond amount (5% of transaction value)
         let bond_amount = amount
             .checked_mul(DISPUTE_BOND_BASIS_POINTS)
             .ok_or(EscrowError::FeeCalculationError)?
             .checked_div(10000)
-            .ok_or(EscrowError::FeeCalculationError)?;
+            .ok_or(EscrowError::FeeCalculationError)?
+            .min(MAX_U64);
 
         // Verify both bonds are present by checking account balances
         require!(
@@ -1002,7 +1013,8 @@ pub mod localsolana_contracts {
             // Transfer all funds to seller
             let total_amount = amount
                 .checked_add(fee)
-                .ok_or(EscrowError::FeeCalculationError)?;
+                .ok_or(EscrowError::FeeCalculationError)?
+                .min(MAX_U64);
 
             let signer_seeds = &[&escrow_token_seeds[..]];
 
@@ -1167,6 +1179,7 @@ pub mod localsolana_contracts {
         let trade_id = ctx.accounts.escrow.trade_id;
         let seller = ctx.accounts.escrow.seller;
         let escrow_key = ctx.accounts.escrow.key();
+        use constants::MAX_U64;
 
         // Check for deposit deadline expiry in Created state
         if current_state == EscrowState::Created {
@@ -1192,7 +1205,8 @@ pub mod localsolana_contracts {
 
             let total_amount = amount
                 .checked_add(fee)
-                .ok_or(EscrowError::FeeCalculationError)?;
+                .ok_or(EscrowError::FeeCalculationError)?
+                .min(MAX_U64);
 
             let escrow_token_bump = ctx.bumps.escrow_token_account;
             let seeds = &[
