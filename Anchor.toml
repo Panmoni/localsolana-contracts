@@ -10,11 +10,14 @@ seeds = true
 [programs.localnet]
 localsolana_contracts = "4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x"
 
+[programs.devnet]
+localsolana_contracts = "4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x"
+
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/repos/ls-contracts-fixed/keys/devnet/program-keypair.json"
 
 [scripts]
