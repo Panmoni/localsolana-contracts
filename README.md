@@ -130,56 +130,55 @@ Events are emitted for key actions (e.g., `EscrowCreated`, `FundsDeposited`, `Di
    - Winner gets funds + their bond; loser’s bond goes to arbitrator.
 
 #### Flow Chart
-
 ```mermaid
 graph TD
-    A[Start] -->|Seller Initiates| B[Create Escrow<br>State: Created]
+    A[Start] -->|Seller Initiates| B[Create Escrow\nState: Created]
     B -->|15 min deadline| C{Fund Escrow?}
 
     %% Funding Path
-    C -->|Yes, Seller Funds| D[Fund Escrow<br>State: Funded]
-    C -->|No, Deadline Expires| E[Auto Cancel<br>State: Cancelled]
+    C -->|Yes, Seller Funds| D[Fund Escrow\nState: Funded]
+    C -->|No, Deadline Expires| E[Auto Cancel\nState: Cancelled]
     D -->|30 min deadline| F{Fiat Paid?}
 
     %% Fiat Paid Path
     F -->|Yes, Buyer Marks Paid| G[Mark Fiat Paid]
-    F -->|No, Deadline Expires| H[Auto Cancel<br>State: Cancelled]
+    F -->|No, Deadline Expires| H[Auto Cancel\nState: Cancelled]
     G --> I{Release or Dispute?}
 
     %% Release Path
-    I -->|Seller/Arbitrator Releases| J[Release Escrow<br>State: Released]
-    J -->|Funds to Buyer or Sequential Escrow<br>Fee to Arbitrator| K[End]
+    I -->|Seller/Arbitrator Releases| J[Release Escrow\nState: Released]
+    J -->|Funds to Buyer or Sequential Escrow\nFee to Arbitrator| K[End]
 
     %% Cancel Path
-    C -->|Seller/Arbitrator Cancels| L[Cancel Escrow<br>State: Cancelled]
-    D -->|Seller/Arbitrator Cancels<br>(No Fiat Paid)| L
-    L -->|Funds Refunded to Seller (if any)| K
+    C -->|Seller or Arbitrator Cancels| L[Cancel Escrow\nState: Cancelled]
+    D -->|Seller or Arbitrator Cancels\nNo Fiat Paid| L
+    L -->|Funds Refunded to Seller if any| K
 
     %% Dispute Path
-    I -->|Buyer/Seller Opens Dispute| M[Open Dispute<br>State: Disputed<br>5% Bond Required]
+    I -->|Buyer or Seller Opens Dispute| M[Open Dispute\nState: Disputed\n5% Bond Required]
     M -->|72 hr deadline| N{Response?}
 
     %% Dispute Response
-    N -->|Yes, Other Party Responds| O[Respond to Dispute<br>5% Bond Required]
-    N -->|No, Deadline Expires| P[Default Judgment<br>State: Resolved]
-    P -->|Funds + Bond to Initiator<br>Defaulting Party Loses| K
+    N -->|Yes, Other Party Responds| O[Respond to Dispute\n5% Bond Required]
+    N -->|No, Deadline Expires| P[Default Judgment\nState: Resolved]
+    P -->|Funds and Bond to Initiator\nDefaulting Party Loses| K
 
     %% Dispute Resolution
-    O -->|7 day deadline| Q[Resolve Dispute<br>State: Resolved]
-    Q -->|Arbitrator Decides:<br>- Buyer Wins: Funds to Buyer, Fee to Arbitrator<br>- Seller Wins: Funds to Seller<br>Winner Gets Bond, Loser’s Bond to Arbitrator| K
+    O -->|7 day deadline| Q[Resolve Dispute\nState: Resolved]
+    Q -->|Arbitrator Decides:\n- Buyer Wins: Funds to Buyer, Fee to Arbitrator\n- Seller Wins: Funds to Seller\nWinner Gets Bond, Loser’s Bond to Arbitrator| K
 
     %% Auto Cancel by Arbitrator
     E -->|Arbitrator Calls| K
     H -->|Arbitrator Calls| K
 
     %% Styling
-    classDef terminal fill:#f9f,stroke:#333,stroke-width:2px;
-    classDef decision fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef process fill:#bfb,stroke:#333,stroke-width:2px;
+    classDef terminal fill:#f9f,stroke:#333,stroke-width:2px
+    classDef decision fill:#bbf,stroke:#333,stroke-width:2px
+    classDef process fill:#bfb,stroke:#333,stroke-width:2px
 
-    class A,K terminal;
-    class C,F,I,N decision;
-    class B,D,G,J,L,M,O,P,Q,E,H process;
+    class A,K terminal
+    class C,F,I,N decision
+    class B,D,G,J,L,M,O,P,Q,E,H process
 ```
 
 #### Explanation of the Flowchart
