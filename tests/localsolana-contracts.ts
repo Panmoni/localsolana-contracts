@@ -1678,7 +1678,7 @@ describe("Localsolana Contracts Tests", () => {
         console.log(`Error message: ${error.message}`);
         assert.include(
           error.message,
-          "custom program error: 0x0",
+          "custom program error: 0x0", // system program rejects the allocation (already in use) before Anchor’s custom error (0x1) fires
           "Expected account already in use error"
         );
       }
