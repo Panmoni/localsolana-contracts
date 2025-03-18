@@ -19,6 +19,8 @@ function loadKeypair(filePath: string): Keypair {
   return Keypair.fromSecretKey(secretKey);
 }
 
+console.log("RPC URL:", process.env.ANCHOR_PROVIDER_URL);
+
 const seller = loadKeypair(process.env.SELLER_KEYPAIR || "");
 const buyer = loadKeypair(process.env.BUYER_KEYPAIR || "");
 const arbitrator = loadKeypair(process.env.ARBITRATOR_KEYPAIR || "");
@@ -33,6 +35,9 @@ let tokenMint: PublicKey;
 let sellerTokenAccount: PublicKey;
 let buyerTokenAccount: PublicKey;
 let arbitratorTokenAccount: PublicKey;
+
+// Sleep helper to avoid 429s
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("Localsolana Contracts Tests", () => {
   const provider = anchor.AnchorProvider.env();
@@ -89,74 +94,27 @@ describe("Localsolana Contracts Tests", () => {
     );
 
     console.log("=== Balance Checking ===");
-    await Promise.all([
-      ensureFunds(seller.publicKey),
-      ensureFunds(buyer.publicKey),
-      ensureFunds(arbitrator.publicKey),
-    ]);
+    // await Promise.all([
+    //   ensureFunds(seller.publicKey),
+    //   ensureFunds(buyer.publicKey),
+    //   ensureFunds(arbitrator.publicKey),
+    // ]);
 
-    console.log("=== Token Generation ===");
-    console.log("Creating token mint...");
-    tokenMint = await token.createMint(
-      provider.connection,
-      seller,
-      seller.publicKey,
-      null,
-      6
-    );
-    console.log("Token mint created:", tokenMint.toBase58());
+    console.log("=== Token Account Setup ===");
+    sellerTokenAccount = new PublicKey("2ozy4RSqXbVvrE1kptN3UG4cseGcUEdKLjUQNtTULim8");
+    buyerTokenAccount = new PublicKey("FN7L7W7eiGMveGSiaxHoZ6ySBFV6akY3JtnTPsTNgWrt");
+    arbitratorTokenAccount = new PublicKey("BTDaSaLc4bN6bgmtbCxPjr38hsxisd44Zg7NoaSmVrSm");
 
-    console.log("Creating seller token account...");
-    sellerTokenAccount = await token.createAccount(
-      provider.connection,
-      seller,
-      tokenMint,
-      seller.publicKey
-    );
-    console.log("Seller token account:", sellerTokenAccount.toBase58());
-
-    console.log("Creating buyer token account...");
-    buyerTokenAccount = await token.createAccount(
-      provider.connection,
-      buyer,
-      tokenMint,
-      buyer.publicKey
-    );
-    console.log("Buyer token account:", buyerTokenAccount.toBase58());
-
-    console.log("Creating arbitrator token account...");
-    arbitratorTokenAccount = await token.createAccount(
-      provider.connection,
-      arbitrator,
-      tokenMint,
-      arbitrator.publicKey
-    );
-    console.log("Arbitrator token account:", arbitratorTokenAccount.toBase58());
-
-    console.log("Minting tokens to seller...");
-    await token.mintTo(
-      provider.connection,
-      seller,
-      tokenMint,
-      sellerTokenAccount,
-      seller.publicKey,
-      1000000000
-    );
-
-    console.log("Minting tokens to buyer...");
-    await token.mintTo(
-      provider.connection,
-      seller,
-      tokenMint,
-      buyerTokenAccount,
-      seller.publicKey,
-      1000000000
-    );
+    tokenMint = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"); // Devnet USDC
 
     const sellerBalance = await provider.connection.getTokenAccountBalance(sellerTokenAccount);
     console.log("Seller token balance:", sellerBalance.value.uiAmount);
+      await sleep(5000); // Pace RPC calls
     const buyerBalance = await provider.connection.getTokenAccountBalance(buyerTokenAccount);
     console.log("Buyer token balance:", buyerBalance.value.uiAmount);
+      await sleep(5000);
+    const arbitratorBalance = await provider.connection.getTokenAccountBalance(arbitratorTokenAccount);
+    console.log("Arbitrator USDC balance:", arbitratorBalance.value.uiAmount);
   });
 
   describe("Basic Escrow Operations", () => {
@@ -181,6 +139,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx, "confirmed");
+        await sleep(5000); // Slow down
 
       console.log("Transaction signature:", tx);
       const sellerBalanceAfter = await provider.connection.getBalance(seller.publicKey);
@@ -216,7 +176,7 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Escrow Funding ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -226,11 +186,13 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       console.log(`Seller token balance before: ${sellerBalanceBefore}`);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -244,6 +206,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const escrowBalance = (await provider.connection.getTokenAccountBalance(escrowTokenPDA)).value.amount;
@@ -270,7 +234,7 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Escrow Funding and Marking Paid ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -280,8 +244,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -295,8 +261,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -304,6 +272,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
       const escrowAccount = await program.account.escrow.fetch(escrowPDA);
       assert.isTrue(escrowAccount.fiatPaid, "Fiat paid should be true");
@@ -317,7 +287,7 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Escrow Full Flow ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -327,8 +297,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -342,8 +314,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -351,18 +325,14 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
-      const buyerBalanceBefore = (
-        await provider.connection.getTokenAccountBalance(buyerTokenAccount)
-      ).value.amount;
-      const arbitratorBalanceBefore = (
-        await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)
-      ).value.amount;
-      const sellerLamportsBefore = await provider.connection.getBalance(
-        seller.publicKey
-      );
+      const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+      const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+      const sellerLamportsBefore = await provider.connection.getBalance(seller.publicKey);
 
-      await program.methods
+      const tx4 = await program.methods
         .releaseEscrow()
         .accounts({
           authority: seller.publicKey,
@@ -375,26 +345,16 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx4, "confirmed");
+        await sleep(5000);
 
-      const buyerBalanceAfter = (
-        await provider.connection.getTokenAccountBalance(buyerTokenAccount)
-      ).value.amount;
-      const arbitratorBalanceAfter = (
-        await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)
-      ).value.amount;
-      const sellerLamportsAfter = await provider.connection.getBalance(
-        seller.publicKey
-      );
+      const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
+      const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
+      const sellerLamportsAfter = await provider.connection.getBalance(seller.publicKey);
 
-      console.log(
-        `Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`
-      );
-      console.log(
-        `Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`
-      );
-      console.log(
-        `Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`
-      );
+      console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
+      console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
+      console.log(`Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`);
 
       assert.equal(
         new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
@@ -402,27 +362,14 @@ describe("Localsolana Contracts Tests", () => {
         "Buyer should receive principal"
       );
       assert.equal(
-        new BN(arbitratorBalanceAfter)
-          .sub(new BN(arbitratorBalanceBefore))
-          .toString(),
+        new BN(arbitratorBalanceAfter).sub(new BN(arbitratorBalanceBefore)).toString(),
         "10000",
         "Arbitrator should receive fee"
       );
-      assert.isTrue(
-        sellerLamportsAfter > sellerLamportsBefore,
-        "Seller should receive rent refund"
-      );
-      // Optional: Check accounts are closed (will fail if not closed)
-      assert.isNull(
-        await provider.connection.getAccountInfo(escrowTokenPDA),
-        "Escrow token account should be closed"
-      );
-      assert.isNull(
-        await provider.connection.getAccountInfo(escrowPDA),
-        "Escrow state account should be closed"
-      );
+      assert.isTrue(sellerLamportsAfter > sellerLamportsBefore, "Seller should receive rent refund");
+      assert.isNull(await provider.connection.getAccountInfo(escrowTokenPDA), "Escrow token account should be closed");
+      assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
     });
-
   });
 
   describe("Sequential Escrow Operations", () => {
@@ -444,6 +391,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx, "confirmed");
+        await sleep(5000);
 
       console.log("Sequential escrow transaction signature:", tx);
 
@@ -475,11 +424,7 @@ describe("Localsolana Contracts Tests", () => {
           .rpc();
         assert.fail("Should have thrown an error for zero amount");
       } catch (error: any) {
-        assert.include(
-          error.message,
-          "Invalid amount: Zero or negative",
-          "Expected InvalidAmount error"
-        );
+        assert.include(error.message, "Invalid amount: Zero or negative", "Expected InvalidAmount error");
       }
     });
 
@@ -492,7 +437,7 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
 
       console.log("=== Sequential Escrow Update ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, true, initialSequentialAddress)
         .accounts({
           seller: seller.publicKey,
@@ -502,8 +447,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .updateSequentialAddress(newSequentialAddress)
         .accounts({
           buyer: buyer.publicKey,
@@ -511,6 +458,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
       const escrowAccount = await program.account.escrow.fetch(escrowPDA);
       assert.equal(
@@ -524,21 +473,21 @@ describe("Localsolana Contracts Tests", () => {
       const escrowId = new BN(escrowIdCounter++);
       const tradeId = new BN(2);
       const amount = new BN(1000000);
-      // const sequentialAddress = buyer.publicKey; // Use buyer for simplicity
       const sequentialAddress = Keypair.generate().publicKey;
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Sequential Escrow Release ===");
       const sequentialTokenAccount = await token.createAccount(
-       provider.connection,
-       seller, // Payer
-       tokenMint,
-       sequentialAddress // Owner
-     );
+        provider.connection,
+        seller,
+        tokenMint,
+        sequentialAddress
+      );
       console.log("Sequential token account:", sequentialTokenAccount.toBase58());
+        await sleep(5000);
 
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, true, sequentialAddress)
         .accounts({
           seller: seller.publicKey,
@@ -548,8 +497,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -563,8 +514,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -572,11 +525,13 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
       const sequentialBalanceBefore = (await provider.connection.getTokenAccountBalance(sequentialTokenAccount)).value.amount;
       const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
 
-      await program.methods
+      const tx4 = await program.methods
         .releaseEscrow()
         .accounts({
           authority: seller.publicKey,
@@ -589,10 +544,11 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx4, "confirmed");
+        await sleep(5000);
 
       const sequentialBalanceAfter = (await provider.connection.getTokenAccountBalance(sequentialTokenAccount)).value.amount;
       const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
-      // const escrowAccount = await program.account.escrow.fetch(escrowPDA);
 
       console.log(`Sequential balance before: ${sequentialBalanceBefore}, after: ${sequentialBalanceAfter}`);
       console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
@@ -607,11 +563,7 @@ describe("Localsolana Contracts Tests", () => {
         "10000",
         "Arbitrator should receive fee"
       );
-      // assert.deepEqual(escrowAccount.state, { released: {} }, "State should be Released");
-      assert.isNull(
-       await provider.connection.getAccountInfo(escrowPDA),
-       "Escrow state account should be closed"
-     );
+      assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
     });
   });
 
@@ -623,7 +575,7 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
 
       console.log("=== Escrow Cancellation Before Funding ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -633,40 +585,32 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      const sellerLamportsBefore = await provider.connection.getBalance(
-        seller.publicKey
-      );
+      const sellerLamportsBefore = await provider.connection.getBalance(seller.publicKey);
 
-      await program.methods
+      const tx2 = await program.methods
         .cancelEscrow()
         .accounts({
-          seller: seller.publicKey, // Added seller as refund destination
+          seller: seller.publicKey,
           authority: seller.publicKey,
           escrow: escrowPDA,
-          escrowTokenAccount: null, // Not funded yet
+          escrowTokenAccount: null,
           sellerTokenAccount: null,
           tokenProgram: token.TOKEN_PROGRAM_ID,
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      const sellerLamportsAfter = await provider.connection.getBalance(
-        seller.publicKey
-      );
+      const sellerLamportsAfter = await provider.connection.getBalance(seller.publicKey);
 
-      console.log(
-        `Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`
-      );
+      console.log(`Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`);
 
-      assert.isTrue(
-        sellerLamportsAfter > sellerLamportsBefore,
-        "Seller should receive rent refund for escrow state account"
-      );
-      assert.isNull(
-        await provider.connection.getAccountInfo(escrowPDA),
-        "Escrow state account should be closed"
-      );
+      assert.isTrue(sellerLamportsAfter > sellerLamportsBefore, "Seller should receive rent refund for escrow state account");
+      assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
     });
 
     it("Cancels escrow after funding", async () => {
@@ -677,7 +621,7 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Escrow Cancellation After Funding ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -687,8 +631,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -702,18 +648,16 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      const sellerBalanceBefore = (
-        await provider.connection.getTokenAccountBalance(sellerTokenAccount)
-      ).value.amount;
-      const sellerLamportsBefore = await provider.connection.getBalance(
-        seller.publicKey
-      );
+      const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+      const sellerLamportsBefore = await provider.connection.getBalance(seller.publicKey);
 
-      await program.methods
+      const tx3 = await program.methods
         .cancelEscrow()
         .accounts({
-          seller: seller.publicKey, // Added seller as refund destination
+          seller: seller.publicKey,
           authority: seller.publicKey,
           escrow: escrowPDA,
           escrowTokenAccount: escrowTokenPDA,
@@ -722,38 +666,23 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
-      const sellerBalanceAfter = (
-        await provider.connection.getTokenAccountBalance(sellerTokenAccount)
-      ).value.amount;
-      const sellerLamportsAfter = await provider.connection.getBalance(
-        seller.publicKey
-      );
+      const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+      const sellerLamportsAfter = await provider.connection.getBalance(seller.publicKey);
 
-      console.log(
-        `Seller token balance before: ${sellerBalanceBefore}, after: ${sellerBalanceAfter}`
-      );
-      console.log(
-        `Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`
-      );
+      console.log(`Seller token balance before: ${sellerBalanceBefore}, after: ${sellerBalanceAfter}`);
+      console.log(`Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`);
 
       assert.equal(
         new BN(sellerBalanceAfter).sub(new BN(sellerBalanceBefore)).toString(),
         "1010000",
         "Seller should receive principal + fee back"
       );
-      assert.isTrue(
-        sellerLamportsAfter > sellerLamportsBefore,
-        "Seller should receive rent refund"
-      );
-      assert.isNull(
-        await provider.connection.getAccountInfo(escrowTokenPDA),
-        "Escrow token account should be closed"
-      );
-      assert.isNull(
-        await provider.connection.getAccountInfo(escrowPDA),
-        "Escrow state account should be closed"
-      );
+      assert.isTrue(sellerLamportsAfter > sellerLamportsBefore, "Seller should receive rent refund");
+      assert.isNull(await provider.connection.getAccountInfo(escrowTokenPDA), "Escrow token account should be closed");
+      assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
     });
 
     it("Fails to cancel escrow after fiat paid", async () => {
@@ -764,7 +693,7 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Escrow Cancellation After Fiat Paid ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -774,8 +703,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -789,8 +720,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -798,12 +731,14 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
       try {
         await program.methods
           .cancelEscrow()
           .accounts({
-            seller: seller.publicKey, // Added seller as refund destination
+            seller: seller.publicKey,
             authority: seller.publicKey,
             escrow: escrowPDA,
             escrowTokenAccount: escrowTokenPDA,
@@ -814,21 +749,12 @@ describe("Localsolana Contracts Tests", () => {
           .rpc();
         assert.fail("Should have thrown an error due to fiat_paid being true");
       } catch (error: any) {
-        assert.include(
-          error.message,
-          "Invalid state transition",
-          "Expected InvalidState error"
-        );
+        assert.include(error.message, "Invalid state transition", "Expected InvalidState error");
       }
 
       const escrowAccount = await program.account.escrow.fetch(escrowPDA);
-      assert.deepEqual(
-        escrowAccount.state,
-        { funded: {} },
-        "State should remain Funded"
-      );
+      assert.deepEqual(escrowAccount.state, { funded: {} }, "State should remain Funded");
     });
-
   });
 
   describe("Dispute Handling", () => {
@@ -841,7 +767,7 @@ describe("Localsolana Contracts Tests", () => {
       const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
 
       console.log("=== Bond Account Initialization ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -851,8 +777,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
         .accounts({
           payer: buyer.publicKey,
@@ -865,8 +793,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
         .accounts({
           payer: seller.publicKey,
@@ -879,6 +809,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
       const buyerBondAccount = await provider.connection.getTokenAccountBalance(buyerBondPDA);
       const sellerBondAccount = await provider.connection.getTokenAccountBalance(sellerBondPDA);
@@ -898,7 +830,7 @@ describe("Localsolana Contracts Tests", () => {
       const evidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
 
       console.log("=== Dispute Opening ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -908,8 +840,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -923,8 +857,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -932,8 +868,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
         .accounts({
           payer: buyer.publicKey,
@@ -946,8 +884,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx4, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
         .accounts({
           payer: seller.publicKey,
@@ -960,9 +900,11 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx5, "confirmed");
+        await sleep(5000);
 
       const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-      await program.methods
+      const tx6 = await program.methods
         .openDisputeWithBond(evidenceHash)
         .accounts({
           disputingParty: buyer.publicKey,
@@ -974,6 +916,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx6, "confirmed");
+        await sleep(5000);
 
       const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const buyerBondBalance = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
@@ -1004,7 +948,7 @@ describe("Localsolana Contracts Tests", () => {
       const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
 
       console.log("=== Dispute Response ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -1014,8 +958,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -1029,8 +975,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -1038,8 +986,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
         .accounts({
           payer: buyer.publicKey,
@@ -1052,8 +1002,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx4, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
         .accounts({
           payer: seller.publicKey,
@@ -1066,8 +1018,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx5, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx6 = await program.methods
         .openDisputeWithBond(buyerEvidenceHash)
         .accounts({
           disputingParty: buyer.publicKey,
@@ -1079,9 +1033,11 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx6, "confirmed");
+        await sleep(5000);
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-      await program.methods
+      const tx7 = await program.methods
         .respondToDisputeWithBond(sellerEvidenceHash)
         .accounts({
           respondingParty: seller.publicKey,
@@ -1093,6 +1049,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx7, "confirmed");
+        await sleep(5000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const sellerBondBalance = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
@@ -1128,7 +1086,7 @@ describe("Localsolana Contracts Tests", () => {
       const resolutionHash = Buffer.alloc(32, "resolution").toJSON().data;
 
       console.log("=== Dispute Resolution (Buyer Wins) ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -1138,8 +1096,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -1153,8 +1113,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -1162,8 +1124,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
         .accounts({
           payer: buyer.publicKey,
@@ -1176,8 +1140,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx4, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
         .accounts({
           payer: seller.publicKey,
@@ -1190,8 +1156,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx5, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx6 = await program.methods
         .openDisputeWithBond(buyerEvidenceHash)
         .accounts({
           disputingParty: buyer.publicKey,
@@ -1203,8 +1171,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx6, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx7 = await program.methods
         .respondToDisputeWithBond(sellerEvidenceHash)
         .accounts({
           respondingParty: seller.publicKey,
@@ -1216,17 +1186,19 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx7, "confirmed");
+        await sleep(5000);
 
       const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
       const buyerBondBefore = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
       const sellerBondBefore = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
 
-      await program.methods
+      const tx8 = await program.methods
         .resolveDisputeWithExplanation(true, resolutionHash)
         .accounts({
           arbitrator: arbitrator.publicKey,
-          seller: seller.publicKey, // Added for rent refund
+          seller: seller.publicKey,
           escrow: escrowPDA,
           escrowTokenAccount: escrowTokenPDA,
           buyerTokenAccount: buyerTokenAccount,
@@ -1238,17 +1210,14 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([arbitrator])
         .rpc();
+      await provider.connection.confirmTransaction(tx8, "confirmed");
+        await sleep(5000);
 
       const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
-      // const buyerBondAfter = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
-      // const sellerBondAfter = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
-      // const escrowAccount = await program.account.escrow.fetch(escrowPDA);
 
       console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
       console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
-      // console.log(`Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`);
-      // console.log(`Seller bond before: ${sellerBondBefore}, after: ${sellerBondAfter}`);
 
       assert.equal(
         new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
@@ -1260,21 +1229,9 @@ describe("Localsolana Contracts Tests", () => {
         "60000",
         "Arbitrator should receive fee (10,000) + seller bond (50,000)"
       );
-      // assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
-      // assert.equal(sellerBondAfter, "0", "Seller bond should be emptied");
-      assert.isNull(
-       await provider.connection.getAccountInfo(buyerBondPDA),
-       "Buyer bond account should be closed"
-     );
-     assert.isNull(
-       await provider.connection.getAccountInfo(sellerBondPDA),
-       "Seller bond account should be closed"
-     );
-      // assert.deepEqual(escrowAccount.state, { resolved: {} }, "State should be Resolved");
-      assert.isNull(
-       await provider.connection.getAccountInfo(escrowPDA),
-       "Escrow state account should be closed"
-     );
+      assert.isNull(await provider.connection.getAccountInfo(buyerBondPDA), "Buyer bond account should be closed");
+      assert.isNull(await provider.connection.getAccountInfo(sellerBondPDA), "Seller bond account should be closed");
+      assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
     });
 
     it("Resolves dispute with seller winning", async () => {
@@ -1290,7 +1247,7 @@ describe("Localsolana Contracts Tests", () => {
       const resolutionHash = Buffer.alloc(32, "resolution").toJSON().data;
 
       console.log("=== Dispute Resolution (Seller Wins) ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -1300,8 +1257,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -1315,8 +1274,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -1324,8 +1285,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
         .accounts({
           payer: buyer.publicKey,
@@ -1338,8 +1301,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx4, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
         .accounts({
           payer: seller.publicKey,
@@ -1352,8 +1317,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx5, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx6 = await program.methods
         .openDisputeWithBond(buyerEvidenceHash)
         .accounts({
           disputingParty: buyer.publicKey,
@@ -1365,8 +1332,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx6, "confirmed");
+        await sleep(5000);
 
-      await program.methods
+      const tx7 = await program.methods
         .respondToDisputeWithBond(sellerEvidenceHash)
         .accounts({
           respondingParty: seller.publicKey,
@@ -1378,17 +1347,19 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx7, "confirmed");
+        await sleep(5000);
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
       const buyerBondBefore = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
       const sellerBondBefore = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
 
-      await program.methods
+      const tx8 = await program.methods
         .resolveDisputeWithExplanation(false, resolutionHash)
         .accounts({
           arbitrator: arbitrator.publicKey,
-          seller: seller.publicKey, // Added for rent refund
+          seller: seller.publicKey,
           escrow: escrowPDA,
           escrowTokenAccount: escrowTokenPDA,
           buyerTokenAccount: buyerTokenAccount,
@@ -1400,24 +1371,14 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([arbitrator])
         .rpc();
+      await provider.connection.confirmTransaction(tx8, "confirmed");
+        await sleep(5000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
-      // const buyerBondAfter = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
-      // const sellerBondAfter = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
 
-      console.log(
-        `Seller balance before: ${sellerBalanceBefore}, after: ${sellerBalanceAfter}`
-      );
-      console.log(
-        `Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`
-      );
-      // console.log(
-      //   `Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`
-      // );
-      // console.log(
-      //   `Seller bond before: ${sellerBondBefore}, after: ${sellerBondAfter}`
-      // );
+      console.log(`Seller balance before: ${sellerBalanceBefore}, after: ${sellerBalanceAfter}`);
+      console.log(`Arbitrator balance before: ${arbitratorBalanceBefore}, after: ${arbitratorBalanceAfter}`);
 
       assert.equal(
         new BN(sellerBalanceAfter).sub(new BN(sellerBalanceBefore)).toString(),
@@ -1425,615 +1386,21 @@ describe("Localsolana Contracts Tests", () => {
         "Seller should receive principal + fee (1,010,000) + bond (50,000)"
       );
       assert.equal(
-        new BN(arbitratorBalanceAfter)
-          .sub(new BN(arbitratorBalanceBefore))
-          .toString(),
+        new BN(arbitratorBalanceAfter).sub(new BN(arbitratorBalanceBefore)).toString(),
         "50000",
         "Arbitrator should receive buyer bond (50,000)"
       );
-      // assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
-      // assert.equal(sellerBondAfter, "0", "Seller bond should be emptied");
-      assert.isNull(
-       await provider.connection.getAccountInfo(buyerBondPDA),
-       "Buyer bond account should be closed"
-     );
-     assert.isNull(
-       await provider.connection.getAccountInfo(sellerBondPDA),
-       "Seller bond account should be closed"
-     );
-      // assert.isNull(
-      //   await provider.connection.getAccountInfo(escrowPDA),
-      //   "Escrow state account should be closed"
-      // );
-      assert.isNull(
-       await provider.connection.getAccountInfo(escrowPDA),
-       "Escrow state account should be closed"
-     );
+      assert.isNull(await provider.connection.getAccountInfo(buyerBondPDA), "Buyer bond account should be closed");
+      assert.isNull(await provider.connection.getAccountInfo(sellerBondPDA), "Seller bond account should be closed");
+      assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
     });
-
-    // it("Resolves dispute by default judgment (buyer wins) - assumes deadline passed", async () => {
-    //   const escrowId = new BN(escrowIdCounter++);
-    //   const tradeId = new BN(2);
-    //   const amount = new BN(1000000);
-    //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-    //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
-    //   const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
-    //   const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-    //   const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
-
-    //   console.log("=== Default Judgment (Buyer Wins) - No Time Warp ===");
-    //   await program.methods
-    //     .createEscrow(escrowId, tradeId, amount, false, null)
-    //     .accounts({
-    //       seller: seller.publicKey,
-    //       buyer: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   await program.methods
-    //     .fundEscrow()
-    //     .accounts({
-    //       seller: seller.publicKey,
-    //       escrow: escrowPDA,
-    //       sellerTokenAccount: sellerTokenAccount,
-    //       escrowTokenAccount: escrowTokenPDA,
-    //       tokenMint: tokenMint,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   await program.methods
-    //     .markFiatPaid()
-    //     .accounts({
-    //       buyer: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //     })
-    //     .signers([buyer])
-    //     .rpc();
-
-    //   await program.methods
-    //     .initializeBuyerBondAccount(escrowId, tradeId)
-    //     .accounts({
-    //       payer: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //       buyerBondAccount: buyerBondPDA,
-    //       tokenMint: tokenMint,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .signers([buyer])
-    //     .rpc();
-
-    //   await program.methods
-    //     .initializeSellerBondAccount(escrowId, tradeId)
-    //     .accounts({
-    //       payer: seller.publicKey,
-    //       escrow: escrowPDA,
-    //       sellerBondAccount: sellerBondPDA,
-    //       tokenMint: tokenMint,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   await program.methods
-    //     .openDisputeWithBond(buyerEvidenceHash)
-    //     .accounts({
-    //       disputingParty: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //       disputingPartyTokenAccount: buyerTokenAccount,
-    //       buyerBondAccount: buyerBondPDA,
-    //       sellerBondAccount: sellerBondPDA,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //     })
-    //     .signers([buyer])
-    //     .rpc();
-
-    //   // Note: No time warp possible on localnet; assumes 72-hour deadline has passed
-    //   console.warn(
-    //     "Assuming dispute response deadline (72 hours) has expired for this test."
-    //   );
-
-    //   const buyerBalanceBefore = (
-    //     await provider.connection.getTokenAccountBalance(buyerTokenAccount)
-    //   ).value.amount;
-    //   const buyerBondBefore = (
-    //     await provider.connection.getTokenAccountBalance(buyerBondPDA)
-    //   ).value.amount;
-
-    //   await program.methods
-    //     .defaultJudgment()
-    //     .accounts({
-    //       seller: seller.publicKey, // Added for rent refund
-    //       arbitrator: arbitrator.publicKey,
-    //       escrow: escrowPDA,
-    //       escrowTokenAccount: escrowTokenPDA,
-    //       buyerTokenAccount: buyerTokenAccount,
-    //       sellerTokenAccount: sellerTokenAccount,
-    //       buyerBondAccount: buyerBondPDA,
-    //       sellerBondAccount: sellerBondPDA,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //     })
-    //     .signers([arbitrator])
-    //     .rpc();
-
-    //   const buyerBalanceAfter = (
-    //     await provider.connection.getTokenAccountBalance(buyerTokenAccount)
-    //   ).value.amount;
-    //   const buyerBondAfter = (
-    //     await provider.connection.getTokenAccountBalance(buyerBondPDA, "recent")
-    //   ).value.amount;
-
-    //   console.log(
-    //     `Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`
-    //   );
-    //   console.log(
-    //     `Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`
-    //   );
-
-    //   assert.equal(
-    //     new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
-    //     "1060000",
-    //     "Buyer should receive principal + fee (1,010,000) + bond (50,000)"
-    //   );
-    //   assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
-    //   assert.isNull(
-    //     await provider.connection.getAccountInfo(escrowPDA),
-    //     "Escrow state account should be closed"
-    //   );
-    // });
-
-    // it("Fails to open dispute before fiat paid", async () => {
-    //   const escrowId = new BN(escrowIdCounter++);
-    //   const tradeId = new BN(2);
-    //   const amount = new BN(1000000);
-    //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-    //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
-    //   const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
-    //   const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-    //   const evidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
-
-    //   console.log("=== Dispute Before Fiat Paid ===");
-    //   await program.methods
-    //     .createEscrow(escrowId, tradeId, amount, false, null)
-    //     .accounts({
-    //       seller: seller.publicKey,
-    //       buyer: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   await program.methods
-    //     .fundEscrow()
-    //     .accounts({
-    //       seller: seller.publicKey,
-    //       escrow: escrowPDA,
-    //       sellerTokenAccount: sellerTokenAccount,
-    //       escrowTokenAccount: escrowTokenPDA,
-    //       tokenMint: tokenMint,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   await program.methods
-    //     .initializeBuyerBondAccount(escrowId, tradeId)
-    //     .accounts({
-    //       payer: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //       buyerBondAccount: buyerBondPDA,
-    //       tokenMint: tokenMint,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .signers([buyer])
-    //     .rpc();
-
-    //   await program.methods
-    //     .initializeSellerBondAccount(escrowId, tradeId)
-    //     .accounts({
-    //       payer: seller.publicKey,
-    //       escrow: escrowPDA,
-    //       sellerBondAccount: sellerBondPDA,
-    //       tokenMint: tokenMint,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   try {
-    //     await program.methods
-    //       .openDisputeWithBond(evidenceHash)
-    //       .accounts({
-    //         disputingParty: buyer.publicKey,
-    //         escrow: escrowPDA,
-    //         disputingPartyTokenAccount: buyerTokenAccount,
-    //         buyerBondAccount: buyerBondPDA,
-    //         sellerBondAccount: sellerBondPDA,
-    //         tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       })
-    //       .signers([buyer])
-    //       .rpc();
-    //     assert.fail("Should have thrown an error due to fiat_paid being false");
-    //   } catch (error: any) {
-    //     assert.include(
-    //       error.message,
-    //       "Invalid state transition",
-    //       "Expected InvalidState error"
-    //     );
-    //   }
-    // });
-
-    // it("Auto-cancels escrow after deposit deadline - assumes deadline passed", async () => {
-    //   const escrowId = new BN(escrowIdCounter++);
-    //   const tradeId = new BN(2);
-    //   const amount = new BN(1000000);
-    //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-
-    //   console.log("=== Auto-Cancel (Deposit Deadline) - No Time Warp ===");
-    //   await program.methods
-    //     .createEscrow(escrowId, tradeId, amount, false, null)
-    //     .accounts({
-    //       seller: seller.publicKey,
-    //       buyer: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   // Note: No time warp possible on localnet; assumes 15-minute deadline has passed
-    //   console.warn(
-    //     "Assuming deposit deadline (15 minutes) has expired for this test."
-    //   );
-
-    //   const sellerLamportsBefore = await provider.connection.getBalance(
-    //     seller.publicKey
-    //   );
-
-    //   await program.methods
-    //     .autoCancel()
-    //     .accounts({
-    //       arbitrator: arbitrator.publicKey,
-    //       seller: seller.publicKey, // Added for rent refund
-    //       escrow: escrowPDA,
-    //       escrowTokenAccount: null, // Not funded yet
-    //       sellerTokenAccount: null,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //     })
-    //     .signers([arbitrator])
-    //     .rpc();
-
-    //   const sellerLamportsAfter = await provider.connection.getBalance(
-    //     seller.publicKey
-    //   );
-
-    //   console.log(
-    //     `Seller lamports before: ${sellerLamportsBefore}, after: ${sellerLamportsAfter}`
-    //   );
-
-    //   assert.isTrue(
-    //     sellerLamportsAfter > sellerLamportsBefore,
-    //     "Seller should receive rent refund"
-    //   );
-    //   assert.isNull(
-    //     await provider.connection.getAccountInfo(escrowPDA),
-    //     "Escrow state account should be closed"
-    //   );
-    // });
-
-    // it("Auto-cancels escrow after fiat deadline - assumes deadline passed", async () => {
-    //   const escrowId = new BN(escrowIdCounter++);
-    //   const tradeId = new BN(2);
-    //   const amount = new BN(1000000);
-    //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-    //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
-
-    //   console.log("=== Auto-Cancel (Fiat Deadline) - No Time Warp ===");
-    //   await program.methods
-    //     .createEscrow(escrowId, tradeId, amount, false, null)
-    //     .accounts({
-    //       seller: seller.publicKey,
-    //       buyer: buyer.publicKey,
-    //       escrow: escrowPDA,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   await program.methods
-    //     .fundEscrow()
-    //     .accounts({
-    //       seller: seller.publicKey,
-    //       escrow: escrowPDA,
-    //       sellerTokenAccount: sellerTokenAccount,
-    //       escrowTokenAccount: escrowTokenPDA,
-    //       tokenMint: tokenMint,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //       systemProgram: anchor.web3.SystemProgram.programId,
-    //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-    //     })
-    //     .signers([seller])
-    //     .rpc();
-
-    //   const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-
-    //   // Note: No time warp possible on localnet; assumes 30-minute deadline has passed
-    //   console.warn("Assuming fiat deadline (30 minutes) has expired for this test.");
-
-    //   await program.methods
-    //     .autoCancel()
-    //     .accounts({
-    //       arbitrator: arbitrator.publicKey,
-    //       seller: seller.publicKey, // Added for rent refund
-    //       escrow: escrowPDA,
-    //       escrowTokenAccount: escrowTokenPDA,
-    //       sellerTokenAccount: sellerTokenAccount,
-    //       tokenProgram: token.TOKEN_PROGRAM_ID,
-    //     })
-    //     .signers([arbitrator])
-    //     .rpc();
-
-    //   const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-
-    //   console.log(`Seller token balance before: ${sellerBalanceBefore}, after: ${sellerBalanceAfter}`);
-
-    //   assert.equal(
-    //     new BN(sellerBalanceAfter).sub(new BN(sellerBalanceBefore)).toString(),
-    //     "1010000",
-    //     "Seller should receive principal + fee back"
-    //   );
-    //   assert.isNull(await provider.connection.getAccountInfo(escrowTokenPDA), "Escrow token account should be closed");
-    //   assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed");
-    // });
-
-
   });
-
-  // it("Resolves dispute by default judgment (buyer wins)", async () => {
-  //   const escrowId = new BN(escrowIdCounter++);
-  //   const tradeId = new BN(2);
-  //   const amount = new BN(1000000);
-  //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-  //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
-  //   const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
-  //   const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-  //   const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
-
-  //   console.log("=== Default Judgment (Buyer Wins) ===");
-  //   await program.methods
-  //     .createEscrow(escrowId, tradeId, amount, false, null)
-  //     .accounts({
-  //       seller: seller.publicKey,
-  //       buyer: buyer.publicKey,
-  //       escrow: escrowPDA,
-  //       system_program: anchor.web3.SystemProgram.programId,
-  //     })
-  //     .signers([seller])
-  //     .rpc();
-
-  //   await program.methods
-  //     .fundEscrow()
-  //     .accounts({
-  //       seller: seller.publicKey,
-  //       escrow: escrowPDA,
-  //       sellerTokenAccount: sellerTokenAccount,
-  //       escrowTokenAccount: escrowTokenPDA,
-  //       tokenMint: tokenMint,
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //       systemProgram: anchor.web3.SystemProgram.programId,
-  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-  //     })
-  //     .signers([seller])
-  //     .rpc();
-
-  //   await program.methods
-  //     .markFiatPaid()
-  //     .accounts({
-  //       buyer: buyer.publicKey,
-  //       escrow: escrowPDA,
-  //     })
-  //     .signers([buyer])
-  //     .rpc();
-
-  //   await program.methods
-  //     .initializeBuyerBondAccount(escrowId, tradeId)
-  //     .accounts({
-  //       payer: buyer.publicKey,
-  //       escrow: escrowPDA,
-  //       buyerBondAccount: buyerBondPDA,
-  //       tokenMint: tokenMint,
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //       systemProgram: anchor.web3.SystemProgram.programId,
-  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-  //     })
-  //     .signers([buyer])
-  //     .rpc();
-
-  //   await program.methods
-  //     .initializeSellerBondAccount(escrowId, tradeId)
-  //     .accounts({
-  //       payer: seller.publicKey,
-  //       escrow: escrowPDA,
-  //       sellerBondAccount: sellerBondPDA,
-  //       tokenMint: tokenMint,
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //       systemProgram: anchor.web3.SystemProgram.programId,
-  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-  //     })
-  //     .signers([seller])
-  //     .rpc();
-
-  //   await program.methods
-  //     .openDisputeWithBond(buyerEvidenceHash)
-  //     .accounts({
-  //       disputingParty: buyer.publicKey,
-  //       escrow: escrowPDA,
-  //       disputingPartyTokenAccount: buyerTokenAccount,
-  //       buyerBondAccount: buyerBondPDA,
-  //       sellerBondAccount: sellerBondPDA,
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //     })
-  //     .signers([buyer])
-  //     .rpc();
-
-  //   // Simulate 72-hour delay (not feasible in testnet, so we assume deadline passed)
-  //   const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-  //   const buyerBondBefore = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
-
-  //   // Note: In a real scenario, we'd wait 72 hours. Here, we assume the test environment allows immediate judgment.
-  //   await program.methods
-  //     .defaultJudgment()
-  //     .accounts({
-  //       arbitrator: arbitrator.publicKey,
-  //       escrow: escrowPDA,
-  //       escrowTokenAccount: escrowTokenPDA,
-  //       buyerTokenAccount: buyerTokenAccount,
-  //       sellerTokenAccount: sellerTokenAccount,
-  //       buyerBondAccount: buyerBondPDA,
-  //       sellerBondAccount: sellerBondPDA,
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //     })
-  //     .signers([arbitrator])
-  //     .rpc();
-
-  //   const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
-  //   const buyerBondAfter = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
-  //   const escrowAccount = await program.account.escrow.fetch(escrowPDA);
-
-  //   console.log(`Buyer balance before: ${buyerBalanceBefore}, after: ${buyerBalanceAfter}`);
-  //   console.log(`Buyer bond before: ${buyerBondBefore}, after: ${buyerBondAfter}`);
-
-  //   assert.equal(
-  //     new BN(buyerBalanceAfter).sub(new BN(buyerBalanceBefore)).toString(),
-  //     "1060000",
-  //     "Buyer should receive principal + fee (1,010,000) + bond (50,000)"
-  //   );
-  //   assert.equal(buyerBondAfter, "0", "Buyer bond should be emptied");
-  //   assert.deepEqual(escrowAccount.state, { resolved: {} }, "State should be Resolved");
-  // });
-
-  // it("Auto-cancels escrow after deposit deadline", async () => {
-  //   const escrowId = new BN(escrowIdCounter++); // Increment counter
-  //   const tradeId = new BN(2);
-  //   const amount = new BN(1000000);
-  //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-  //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
-
-  //   console.log("=== Auto-Cancel (Deposit Deadline) ===");
-  //   await program.methods
-  //     .createEscrow(escrowId, tradeId, amount, false, null)
-  //     .accounts({
-  //       seller: seller.publicKey,
-  //       buyer: buyer.publicKey,
-  //       escrow: escrowPDA,
-  //       system_program: anchor.web3.SystemProgram.programId,
-  //     })
-  //     .signers([seller])
-  //     .rpc();
-
-  //   // Wait 61 seconds to exceed the 1-minute (60-second) deposit deadline
-  //   await new Promise((resolve) => setTimeout(resolve, 61000));
-
-  //   await program.methods
-  //     .autoCancel()
-  //     .accounts({
-  //       escrow: escrowPDA,
-  //       escrowTokenAccount: null, // Not funded yet
-  //       sellerTokenAccount: null, // No funds to return
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //     })
-  //     .rpc();
-
-  //   const escrowAccount = await program.account.escrow.fetch(escrowPDA);
-  //   assert.deepEqual(escrowAccount.state, { cancelled: {} }, "State should be Cancelled");
-  //   assert.equal(escrowAccount.counter.toString(), "1", "Counter should increment");
-  // });
-  // it("Auto-cancels escrow after fiat deadline", async () => {
-  //   const escrowId = new BN(escrowIdCounter++); // Increment counter
-  //   const tradeId = new BN(2);
-  //   const amount = new BN(1000000);
-  //   const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
-  //   const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
-
-  //   console.log("=== Auto-Cancel (Fiat Deadline) ===");
-  //   await program.methods
-  //     .createEscrow(escrowId, tradeId, amount, false, null)
-  //     .accounts({
-  //       seller: seller.publicKey,
-  //       buyer: buyer.publicKey,
-  //       escrow: escrowPDA,
-  //       system_program: anchor.web3.SystemProgram.programId,
-  //     })
-  //     .signers([seller])
-  //     .rpc();
-
-  //   await program.methods
-  //     .fundEscrow()
-  //     .accounts({
-  //       seller: seller.publicKey,
-  //       escrow: escrowPDA,
-  //       sellerTokenAccount: sellerTokenAccount,
-  //       escrowTokenAccount: escrowTokenPDA,
-  //       tokenMint: tokenMint,
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //       systemProgram: anchor.web3.SystemProgram.programId,
-  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-  //     })
-  //     .signers([seller])
-  //     .rpc();
-
-  //   const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-  //   console.log(`Seller token balance before: ${sellerBalanceBefore}`);
-
-  //   // Wait 61 seconds to exceed the 1-minute (60-second) fiat deadline
-  //   await new Promise((resolve) => setTimeout(resolve, 61000));
-
-  //   await program.methods
-  //     .autoCancel()
-  //     .accounts({
-  //       escrow: escrowPDA,
-  //       escrowTokenAccount: escrowTokenPDA,
-  //       sellerTokenAccount: sellerTokenAccount,
-  //       tokenProgram: token.TOKEN_PROGRAM_ID,
-  //     })
-  //     .rpc();
-
-  //   const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-  //   const escrowAccount = await program.account.escrow.fetch(escrowPDA);
-
-  //   console.log(`Seller token balance after: ${sellerBalanceAfter}`);
-
-  //   assert.equal(
-  //     new BN(sellerBalanceAfter).sub(new BN(sellerBalanceBefore)).toString(),
-  //     "1010000",
-  //     "Seller should receive principal + fee back"
-  //   );
-  //   assert.deepEqual(escrowAccount.state, { cancelled: {} }, "State should be Cancelled");
-  //   assert.equal(escrowAccount.counter.toString(), "2", "Counter should increment");
-  // });
 
   describe("Edge Cases and Errors", () => {
     it("Fails to create escrow with amount exceeding maximum", async () => {
       const escrowId = new BN(escrowIdCounter++);
       const tradeId = new BN(2);
-      const excessiveAmount = new BN(100000001); // 100.000001 USDC > 100 USDC max
+      const excessiveAmount = new BN(100000001);
 
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
 
@@ -2051,23 +1418,19 @@ describe("Localsolana Contracts Tests", () => {
           .rpc();
         assert.fail("Should have thrown an error for exceeding maximum amount");
       } catch (error: any) {
-        assert.include(
-          error.message,
-          "Amount exceeds maximum (100 USDC)",
-          "Expected ExceedsMaximum error"
-        );
+        assert.include(error.message, "Amount exceeds maximum (100 USDC)", "Expected ExceedsMaximum error");
       }
     });
 
     it("Fails to fund escrow with unauthorized signer", async () => {
       const escrowId = new BN(escrowIdCounter++);
       const tradeId = new BN(2);
-      const amount = new BN(1000000); // 1 USDC
+      const amount = new BN(1000000);
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Unauthorized Actions ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -2077,12 +1440,14 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
       try {
         await program.methods
           .fundEscrow()
           .accounts({
-            seller: buyer.publicKey, // Wrong signer
+            seller: buyer.publicKey,
             escrow: escrowPDA,
             sellerTokenAccount: sellerTokenAccount,
             escrowTokenAccount: escrowTokenPDA,
@@ -2096,23 +1461,19 @@ describe("Localsolana Contracts Tests", () => {
         assert.fail("Should have thrown an error for unauthorized signer");
       } catch (error: any) {
         console.log(`Error message: ${error.message}`);
-        assert.include(
-          error.message,
-          "A raw constraint was violated",
-          "Expected raw constraint violation"
-        );
+        assert.include(error.message, "A raw constraint was violated", "Expected raw constraint violation");
       }
     });
 
     it("Fails to fund escrow with insufficient funds", async () => {
       const escrowId = new BN(escrowIdCounter++);
       const tradeId = new BN(2);
-      const amount = new BN(1000000); // 1 USDC, total needed = 1,010,000
+      const amount = new BN(1000000);
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Insufficient Funds ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -2122,18 +1483,13 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      // Burn tokens to reduce seller balance below required amount
       const currentBalance = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-      const burnAmount = new BN(currentBalance).sub(new BN(500000)); // Leave 0.5 USDC
-      await token.burn(
-        provider.connection,
-        seller,
-        sellerTokenAccount,
-        tokenMint,
-        seller,
-        burnAmount.toNumber()
-      );
+      const burnAmount = new BN(currentBalance).sub(new BN(500000));
+      await token.burn(provider.connection, seller, sellerTokenAccount, tokenMint, seller, burnAmount.toNumber());
+        await sleep(5000);
 
       try {
         await program.methods
@@ -2152,24 +1508,20 @@ describe("Localsolana Contracts Tests", () => {
           .rpc();
         assert.fail("Should have thrown an error for insufficient funds");
       } catch (error: any) {
-        assert.include(
-          error.message,
-          "Insufficient funds",
-          "Expected InsufficientFunds error"
-        );
+        assert.include(error.message, "Insufficient funds", "Expected InsufficientFunds error");
       }
     });
 
     it("Fails to release sequential escrow without sequential address", async () => {
       const escrowId = new BN(escrowIdCounter++);
       const tradeId = new BN(2);
-      const amount = new BN(1000000); // 1 USDC
+      const amount = new BN(1000000);
       const sequentialAddress = Keypair.generate().publicKey;
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Missing Sequential Address ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, true, sequentialAddress)
         .accounts({
           seller: seller.publicKey,
@@ -2179,23 +1531,17 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      // Restore seller balance to ensure fund_escrow succeeds
       const currentBalance = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       if (new BN(currentBalance).lt(new BN(1010000))) {
-        await token.mintTo(
-          provider.connection,
-          seller, // Payer
-          tokenMint,
-          sellerTokenAccount,
-          seller, // Mint authority (Keypair)
-          1000000000 // Mint 1000 USDC to reset balance
-        );
+        await token.mintTo(provider.connection, seller, tokenMint, sellerTokenAccount, seller, 1000000000);
       }
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       console.log(`Seller token balance before funding: ${sellerBalanceBefore}`);
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -2209,11 +1555,13 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
       const escrowBalance = (await provider.connection.getTokenAccountBalance(escrowTokenPDA)).value.amount;
       console.log(`Escrow token balance after funding: ${escrowBalance}`);
 
-      await program.methods
+      const tx3 = await program.methods
         .markFiatPaid()
         .accounts({
           buyer: buyer.publicKey,
@@ -2221,6 +1569,8 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([buyer])
         .rpc();
+      await provider.connection.confirmTransaction(tx3, "confirmed");
+        await sleep(5000);
 
       const escrowBalanceBeforeRelease = (await provider.connection.getTokenAccountBalance(escrowTokenPDA)).value.amount;
       console.log(`Escrow token balance before release: ${escrowBalanceBeforeRelease}`);
@@ -2242,23 +1592,19 @@ describe("Localsolana Contracts Tests", () => {
         assert.fail("Should have thrown an error for missing sequential address");
       } catch (error: any) {
         console.log(`Error message: ${error.message}`);
-        assert.include(
-          error.message,
-          "Missing sequential escrow address",
-          "Expected SequentialAddressMissing error"
-        );
+        assert.include(error.message, "Missing sequential escrow address", "Expected SequentialAddressMissing error");
       }
     });
 
     it("Fails to fund escrow twice (reinitialization prevented)", async () => {
       const escrowId = new BN(escrowIdCounter++);
       const tradeId = new BN(2);
-      const amount = new BN(1000000); // 1 USDC
+      const amount = new BN(1000000);
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
 
       console.log("=== Reinitialization Prevention ===");
-      await program.methods
+      const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, false, null)
         .accounts({
           seller: seller.publicKey,
@@ -2268,9 +1614,10 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+        await sleep(5000);
 
-      // First fund_escrow call (should succeed)
-      await program.methods
+      const tx2 = await program.methods
         .fundEscrow()
         .accounts({
           seller: seller.publicKey,
@@ -2284,8 +1631,9 @@ describe("Localsolana Contracts Tests", () => {
         })
         .signers([seller])
         .rpc();
+      await provider.connection.confirmTransaction(tx2, "confirmed");
+        await sleep(5000);
 
-      // Second fund_escrow call (should fail due to init)
       try {
         await program.methods
           .fundEscrow()
@@ -2304,14 +1652,8 @@ describe("Localsolana Contracts Tests", () => {
         assert.fail("Should have thrown an error for reinitializing escrow_token_account");
       } catch (error: any) {
         console.log(`Error message: ${error.message}`);
-        assert.include(
-          error.message,
-          "custom program error: 0x0", // system program rejects the allocation (already in use) before Anchor’s custom error (0x1) fires
-          "Expected account already in use error"
-        );
+        assert.include(error.message, "custom program error: 0x0", "Expected account already in use error");
       }
     });
-
   });
-
 });
