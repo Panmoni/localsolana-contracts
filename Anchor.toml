@@ -22,6 +22,7 @@ cluster = "https://distinguished-chaotic-bird.solana-devnet.quiknode.pro/483d675
 wallet = "~/repos/ls-contracts-fixed/keys/devnet/program-keypair.json"
 
 [test]
-# script = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
-script = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/localsolana_contracts.ts"
 skip_deploy = true
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
