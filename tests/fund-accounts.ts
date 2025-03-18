@@ -11,9 +11,10 @@ async function ensureFunds(
   minLamports: number = 5 * LAMPORTS_PER_SOL
 ): Promise<void> {
   const connection = new anchor.web3.Connection(
-    "http://127.0.0.1:8899",
-    "confirmed"
-  );
+  process.env.ANCHOR_PROVIDER_URL || "https://api.devnet.solana.com",
+  "confirmed"
+);
+
   const balance = await connection.getBalance(publicKey);
   console.log(`Balance for ${publicKey.toBase58()}: ${balance} lamports`);
   if (balance < minLamports) {
