@@ -374,17 +374,19 @@ pub mod localsolana_contracts {
             ctx.accounts.token_program.to_account_info(),
             CloseAccount {
                 account: ctx.accounts.escrow_token_account.to_account_info(),
-                destination: ctx.accounts.authority.to_account_info(), // Seller or arbitrator, refund here
+                destination: ctx.accounts.authority.to_account_info(), // refund to authority
                 authority: ctx.accounts.escrow_token_account.to_account_info(),
             },
             signer_seeds,
         );
+
         token::close_account(close_token_context)?;
 
         // Updated: Close escrow state account, refund rent to seller
-        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
-        **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() = 0;
-        **ctx.accounts.authority.to_account_info().lamports.borrow_mut() += escrow_lamports;
+        let escrow = &mut ctx.accounts.escrow;
+        escrow.state = EscrowState::Released;
+        escrow.counter = escrow.counter.checked_add(1).unwrap();
+        let counter = escrow.counter;
 
         // Figure out destination for event
         let destination = if is_sequential {
@@ -392,12 +394,6 @@ pub mod localsolana_contracts {
         } else {
             buyer
         };
-
-        // Update escrow state
-        let escrow = &mut ctx.accounts.escrow;
-        escrow.state = EscrowState::Released;
-        escrow.counter = escrow.counter.checked_add(1).unwrap();
-        let counter = escrow.counter;
 
         emit!(EscrowReleased {
             object_id: escrow_key,
@@ -480,18 +476,15 @@ pub mod localsolana_contracts {
                 ctx.accounts.token_program.to_account_info(),
                 CloseAccount {
                     account: escrow_token_account.to_account_info(),
-                    destination: ctx.accounts.authority.to_account_info(),
+                    destination: ctx.accounts.seller.to_account_info(),
                     authority: escrow_token_account.to_account_info(),
                 },
                 signer_seeds,
             );
+
             token::close_account(close_token_context)?;
         }
 
-        // Updated: Close escrow state account (funded or not)
-        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
-        **ctx.accounts.escrow.to_account_info().lamports.borrow_mut() = 0;
-        **ctx.accounts.authority.to_account_info().lamports.borrow_mut() += escrow_lamports;
 
         // Update escrow state
         let escrow = &mut ctx.accounts.escrow;
@@ -767,14 +760,14 @@ pub mod localsolana_contracts {
         let amount = ctx.accounts.escrow.amount;
         let fee = ctx.accounts.escrow.fee;
 
+        let total_amount = amount
+            .checked_add(fee)
+            .ok_or(EscrowError::FeeCalculationError)?;
+
         let bond_amount = amount
             .checked_mul(DISPUTE_BOND_BASIS_POINTS)
             .ok_or(EscrowError::FeeCalculationError)?
             .checked_div(10000)
-            .ok_or(EscrowError::FeeCalculationError)?;
-
-        let total_amount = amount
-            .checked_add(fee)
             .ok_or(EscrowError::FeeCalculationError)?;
 
         // Determine winning account
@@ -845,6 +838,28 @@ pub mod localsolana_contracts {
         );
 
         token::transfer(bond_transfer_context, bond_amount)?;
+
+        // Close escrow_token_account
+        token::close_account(CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: ctx.accounts.escrow_token_account.to_account_info(),
+                destination: ctx.accounts.seller.to_account_info(), // Refund to seller
+                authority: ctx.accounts.escrow_token_account.to_account_info(),
+            },
+            &[&escrow_token_seeds[..]],
+        ))?;
+
+        // Close winning bond account
+        token::close_account(CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: winning_bond_account.to_account_info(),
+                destination: ctx.accounts.seller.to_account_info(), // Refund to seller
+                authority: winning_bond_account.to_account_info(),
+            },
+            &[&winning_bond_seeds[..]],
+        ))?;
 
         // Update escrow state
         let escrow = &mut ctx.accounts.escrow;
@@ -1062,6 +1077,39 @@ pub mod localsolana_contracts {
 
         token::transfer(loser_bond_transfer_context, bond_amount)?;
 
+        // Close escrow_token_account
+        token::close_account(CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: ctx.accounts.escrow_token_account.to_account_info(),
+                destination: ctx.accounts.seller.to_account_info(),
+                authority: ctx.accounts.escrow_token_account.to_account_info(),
+            },
+            &[&escrow_token_seeds[..]],
+        ))?;
+
+        // Close winning bond account
+        token::close_account(CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: winning_bond_account.to_account_info(),
+                destination: ctx.accounts.seller.to_account_info(),
+                authority: winning_bond_account.to_account_info(),
+            },
+            winning_signer_seeds,
+        ))?;
+
+        // Close losing bond account
+        token::close_account(CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            CloseAccount {
+                account: losing_bond_account.to_account_info(),
+                destination: ctx.accounts.seller.to_account_info(),
+                authority: losing_bond_account.to_account_info(),
+            },
+            losing_signer_seeds,
+        ))?;
+
         // Update escrow state
         escrow.state = EscrowState::Resolved;
         escrow.counter = escrow.counter.checked_add(1).unwrap();
@@ -1167,6 +1215,16 @@ pub mod localsolana_contracts {
             );
 
             token::transfer(transfer_context, total_amount)?;
+
+            token::close_account(CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                CloseAccount {
+                    account: escrow_token_account.to_account_info(),
+                    destination: ctx.accounts.seller.to_account_info(), // Refund to seller (matches close = seller)
+                    authority: escrow_token_account.to_account_info(),
+                },
+                signer_seeds,
+            ))?;
         }
 
         // Update escrow state
@@ -1240,9 +1298,6 @@ pub struct FundEscrow<'info> {
     pub seller_token_account: Account<'info, token::TokenAccount>,
 
     #[account(
-        // probably remove init_if_needed in next iteration.
-        // https://www.rareskills.io/post/init-if-needed-anchor
-        // init_if_needed,
         init,
         payer = seller,
         seeds = [b"escrow_token", escrow.key().as_ref()],
@@ -1295,6 +1350,7 @@ pub struct ReleaseEscrow<'info> {
         mut,
         seeds = [b"escrow", escrow.escrow_id.to_le_bytes().as_ref(), escrow.trade_id.to_le_bytes().as_ref()],
         bump,
+        close = authority,
         constraint = escrow.seller == authority.key() || escrow.arbitrator == authority.key()
     )]
     pub escrow: Account<'info, Escrow>,
@@ -1328,6 +1384,9 @@ pub struct ReleaseEscrow<'info> {
 
 #[derive(Accounts)]
 pub struct CancelEscrow<'info> {
+    /// CHECK: Seller is the refund destination, verified by the close constraint
+    #[account(mut)]
+    pub seller: AccountInfo<'info>, // Refund destination
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -1335,6 +1394,7 @@ pub struct CancelEscrow<'info> {
         mut,
         seeds = [b"escrow", escrow.escrow_id.to_le_bytes().as_ref(), escrow.trade_id.to_le_bytes().as_ref()],
         bump,
+        close = seller,
         constraint = escrow.seller == authority.key() || escrow.arbitrator == authority.key()
     )]
     pub escrow: Account<'info, Escrow>,
@@ -1484,6 +1544,9 @@ pub struct RespondToDispute<'info> {
 
 #[derive(Accounts)]
 pub struct DefaultJudgment<'info> {
+    /// CHECK: Seller is the refund destination, verified by the close constraint
+    #[account(mut)]
+    pub seller: AccountInfo<'info>, // Refund destination
     #[account(mut)]
     pub arbitrator: Signer<'info>,
 
@@ -1491,6 +1554,9 @@ pub struct DefaultJudgment<'info> {
         mut,
         seeds = [b"escrow", escrow.escrow_id.to_le_bytes().as_ref(), escrow.trade_id.to_le_bytes().as_ref()],
         bump,
+        // rent goes to seller
+        close = seller,
+        // but only arbitrator can call this
         constraint = escrow.arbitrator == arbitrator.key()
     )]
     pub escrow: Account<'info, Escrow>,
@@ -1535,11 +1601,16 @@ pub struct DefaultJudgment<'info> {
 pub struct ResolveDispute<'info> {
     #[account(mut)]
     pub arbitrator: Signer<'info>,
+    // For rent refund
+    /// CHECK: Seller is the refund destination, verified by the close constraint
+    #[account(mut)]
+    pub seller: AccountInfo<'info>,
 
     #[account(
         mut,
         seeds = [b"escrow", escrow.escrow_id.to_le_bytes().as_ref(), escrow.trade_id.to_le_bytes().as_ref()],
         bump,
+        close = seller,
         constraint = escrow.arbitrator == arbitrator.key()
     )]
     pub escrow: Account<'info, Escrow>,
@@ -1590,11 +1661,16 @@ pub struct ResolveDispute<'info> {
 pub struct AutoCancel<'info> {
     #[account(mut)]
     pub arbitrator: Signer<'info>,
+    // For rent refund
+    /// CHECK: Seller is the refund destination, verified by the close constraint
+    #[account(mut)]
+    pub seller: AccountInfo<'info>,
 
     #[account(
         mut,
         seeds = [b"escrow", escrow.escrow_id.to_le_bytes().as_ref(), escrow.trade_id.to_le_bytes().as_ref()],
         bump,
+        close = seller,
         constraint = escrow.arbitrator == arbitrator.key()
     )]
     pub escrow: Account<'info, Escrow>,
