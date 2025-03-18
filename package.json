@@ -6,7 +6,6 @@
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
     "setup": "./setup.sh",
     "build": "npm run setup && anchor build",
-    "test": "ts-node tests/fund-accounts.ts && anchor test --skip-local-validator",
     "clean": "anchor clean && npm run setup"
   },
   "dependencies": {
