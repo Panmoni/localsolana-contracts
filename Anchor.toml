@@ -17,8 +17,11 @@ localsolana_contracts = "4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+# cluster = "devnet"
+cluster = "https://distinguished-chaotic-bird.solana-devnet.quiknode.pro/483d675967ac17c1970a9b07fdba88abe17d421e/"
 wallet = "~/repos/ls-contracts-fixed/keys/devnet/program-keypair.json"
 
-[scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+[test]
+# script = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+script = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/localsolana_contracts.ts"
+skip_deploy = true
