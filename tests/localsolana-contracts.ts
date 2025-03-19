@@ -965,7 +965,8 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
       const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
       const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-      const evidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+      // const evidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+      const evidenceHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
 
       console.log("=== Dispute Opening ===");
       const tx1 = await program.methods
@@ -1104,8 +1105,10 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
       const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
       const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-      const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
-      const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
+      // const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+      // const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
+      const buyerEvidenceHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
+      const sellerEvidenceHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
 
       console.log("=== Dispute Response ===");
       const tx1 = await program.methods
@@ -1263,9 +1266,12 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
       const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
       const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-      const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
-      const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
-      const resolutionHash = Buffer.alloc(32, "resolution").toJSON().data;
+      // const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+      // const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
+      // const resolutionHash = Buffer.alloc(32, "resolution").toJSON().data;
+      const buyerEvidenceHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
+      const sellerEvidenceHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
+      const resolutionHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
 
       console.log("=== Dispute Resolution (Buyer Wins) ===");
       const tx1 = await program.methods
@@ -1424,9 +1430,12 @@ describe("Localsolana Contracts Tests", () => {
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
       const [buyerBondPDA] = deriveBuyerBondPDA(escrowPDA);
       const [sellerBondPDA] = deriveSellerBondPDA(escrowPDA);
-      const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
-      const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
-      const resolutionHash = Buffer.alloc(32, "resolution").toJSON().data;
+      // const buyerEvidenceHash = Buffer.alloc(32, "buyer_evidence").toJSON().data;
+      // const sellerEvidenceHash = Buffer.alloc(32, "seller_evidence").toJSON().data;
+      // const resolutionHash = Buffer.alloc(32, "resolution").toJSON().data;
+      const buyerEvidenceHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
+      const sellerEvidenceHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
+      const resolutionHash = Buffer.from("buyer_evidence_hash_123456789012", "utf8"); // 32 bytes
 
       console.log("=== Dispute Resolution (Seller Wins) ===");
       const tx1 = await program.methods
@@ -1700,7 +1709,8 @@ describe("Localsolana Contracts Tests", () => {
 
     it("Fails to fund escrow twice (reinitialization prevented)", async () => {
       const escrowId = generateRandomId();
-      const tradeId = new BN(escrowIdCounter++); // Unique tradeId
+      // const tradeId = new BN(escrowIdCounter++); // Unique tradeId
+      const tradeId = generateRandomId();
       const amount = new BN(1000000); // 1 USDC
       const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
       const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
