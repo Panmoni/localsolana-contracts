@@ -217,5 +217,9 @@ graph TD
 
 This is based on the YapBay Sequential Escrow System. https://YapBay.com
 
+## More Information
+
+Visit the primary LocalSolana repo for more information: [https://github.com/Panmoni/localsolana](https://github.com/Panmoni/localsolana).
+
 ## License
 This contract is provided as-is, under the MIT license. Use and modify at your own risk.
