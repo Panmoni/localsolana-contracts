@@ -1937,14 +1937,19 @@ pub struct DisputeDefaultJudgment {
 
 #[event]
 pub struct EscrowBalanceChanged {
+    pub object_id: Pubkey,     // the escrow account address (PDA) itself
     pub escrow_id: u64,
+    pub trade_id: u64,         // makes it easier to link across systems
     pub new_balance: u64,
-    pub reason: String,
+    pub reason: String,        // e.g. "Escrow funded" / "Escrow released"
+    pub timestamp: i64,        // when it happened (for audit trails)
 }
 
 #[event]
 pub struct SequentialAddressUpdated {
+    pub object_id: Pubkey,       // the escrow account PDA
     pub escrow_id: u64,
+    pub trade_id: u64,
     pub old_address: Option<Pubkey>,
     pub new_address: Pubkey,
     pub timestamp: i64,
