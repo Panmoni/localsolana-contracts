@@ -153,6 +153,9 @@ pub mod localsolana_contracts {
         // Get escrow key for event
         let escrow_key = escrow.key();
 
+        // initiatialize tracked balance
+        escrow.tracked_balance = 0;
+
         emit!(EscrowCreated {
             object_id: escrow_key,
             escrow_id,
