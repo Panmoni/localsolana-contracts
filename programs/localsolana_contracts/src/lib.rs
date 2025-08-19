@@ -228,6 +228,16 @@ pub mod localsolana_contracts {
         escrow.counter = escrow.counter.checked_add(1).unwrap();
         escrow.fiat_deadline = fiat_deadline;
 
+        // Update tracked balance
+        escrow.tracked_balance = total_amount;
+
+        // Emit balance change event
+        emit!(EscrowBalanceChanged {
+            escrow_id,
+            new_balance: total_amount,
+            reason: "Escrow funded".to_string(),
+        });
+
         let counter = escrow.counter;
 
         emit!(FundsDeposited {
@@ -373,6 +383,16 @@ pub mod localsolana_contracts {
 
         token::transfer(principal_transfer_context, amount)?;
 
+        // Update tracked balance to zero
+        escrow.tracked_balance = 0;
+
+        // Emit balance change event
+        emit!(EscrowBalanceChanged {
+            escrow_id,
+            new_balance: 0,
+            reason: "Escrow released".to_string(),
+        });
+
         // Updated: Close escrow_token_account, refund rent to seller
         let close_token_context = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
@@ -476,6 +496,16 @@ pub mod localsolana_contracts {
             );
 
             token::transfer(transfer_context, total_amount)?;
+
+            // Set tracked balance to Zero
+            escrow.tracked_balance = 0;
+
+            // Emit escrow balance changed event
+            emit!(EscrowBalanceChanged {
+                escrow_id,
+                new_balance: 0,
+                reason: "Escrow cancelled".to_string(),
+            });
 
             // Updated: Close escrow_token_account
             let close_token_context = CpiContext::new_with_signer(
@@ -809,6 +839,16 @@ pub mod localsolana_contracts {
 
         token::transfer(transfer_context, total_amount)?;
 
+        // set tracked balance to zero
+        escrow.tracked_balance = 0;
+
+        // emit escrow balance change event
+        emit!(EscrowBalanceChanged {
+            escrow_id,
+            new_balance: 0,
+            reason: "Dispute resolved".to_string(),
+        });
+
         // Create arrays with longer lifetimes before the conditional block
         let buyer_bond_bump = ctx.bumps.buyer_bond_account;
         let buyer_bond_bump_array = [buyer_bond_bump];
@@ -1009,6 +1049,17 @@ pub mod localsolana_contracts {
             );
 
             token::transfer(principal_transfer_context, amount)?;
+
+            // set tracked balance to zero
+            escrow.tracked_balance = 0;
+
+            // emit escrow balance change event
+            emit!(EscrowBalanceChanged {
+                escrow_id,
+                new_balance: 0,
+                reason: "Dispute resolved".to_string(),
+            });
+
         } else {
             // Transfer all funds to seller
             let total_amount = amount
@@ -1029,6 +1080,16 @@ pub mod localsolana_contracts {
             );
 
             token::transfer(transfer_context, total_amount)?;
+
+            // set tracked balance to zero
+            escrow.tracked_balance = 0;
+
+            // emit escrow balance change event
+            emit!(EscrowBalanceChanged {
+                escrow_id,
+                new_balance: 0,
+                reason: "Dispute resolved".to_string(),
+            });
         }
 
         // Create all arrays with longer lifetimes before the conditional block
@@ -1229,6 +1290,16 @@ pub mod localsolana_contracts {
             );
 
             token::transfer(transfer_context, total_amount)?;
+
+            // set tracked balance to zero
+            escrow.tracked_balance = 0;
+
+            // emit escrow balance change event
+            emit!(EscrowBalanceChanged {
+                escrow_id,
+                new_balance: 0,
+                reason: "Escrow cancelled".to_string(),
+            });
 
             token::close_account(CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -1725,7 +1796,9 @@ pub struct Escrow {
     pub dispute_initiated_time: Option<i64>,
     pub dispute_evidence_hash_buyer: Option<[u8; 32]>,
     pub dispute_evidence_hash_seller: Option<[u8; 32]>,
-    pub dispute_resolution_hash: Option<[u8; 32]>
+    pub dispute_resolution_hash: Option<[u8; 32]>,
+    // tracked balance field for off-chain indexers
+    pub tracked_balance: u64,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq)]
