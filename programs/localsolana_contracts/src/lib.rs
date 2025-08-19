@@ -301,8 +301,21 @@ pub mod localsolana_contracts {
             EscrowError::TerminalState
         );
 
+        let old_address = ctx.accounts.escrow.sequential_escrow_address;
+
         // Update sequential escrow address
         ctx.accounts.escrow.sequential_escrow_address = Some(new_address);
+
+        let escrow_id = ctx.accounts.escrow.escrow_id;
+        let current_time = Clock::get()?.unix_timestamp;
+
+        // Emit event for sequential escrow address change
+        emit!(SequentialAddressUpdated {
+            escrow_id,
+            old_address,
+            new_address,
+            timestamp: current_time,
+        });
 
         Ok(())
     }
@@ -1916,5 +1929,20 @@ pub struct DisputeDefaultJudgment {
     pub trade_id: u64,
     pub defaulting_party: Pubkey,
     pub decision: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct EscrowBalanceChanged {
+    pub escrow_id: u64,
+    pub new_balance: u64,
+    pub reason: String,
+}
+
+#[event]
+pub struct SequentialAddressUpdated {
+    pub escrow_id: u64,
+    pub old_address: Option<Pubkey>,
+    pub new_address: Pubkey,
     pub timestamp: i64,
 }
