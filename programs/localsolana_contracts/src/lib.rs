@@ -236,9 +236,12 @@ pub mod localsolana_contracts {
 
         // Emit balance change event
         emit!(EscrowBalanceChanged {
+            object_id: escrow_key,
             escrow_id,
+            trade_id,
             new_balance: total_amount,
             reason: "Escrow funded".to_string(),
+            timestamp: current_time,
         });
 
         let counter = escrow.counter;
@@ -314,7 +317,9 @@ pub mod localsolana_contracts {
 
         // Emit event for sequential escrow address change
         emit!(SequentialAddressUpdated {
+            object_id: escrow_key,
             escrow_id,
+            trade_id,
             old_address,
             new_address,
             timestamp: current_time,
@@ -404,9 +409,12 @@ pub mod localsolana_contracts {
 
         // Emit balance change event
         emit!(EscrowBalanceChanged {
+            object_id: escrow_key,
             escrow_id,
+            trade_id,
             new_balance: 0,
             reason: "Escrow released".to_string(),
+            timestamp: current_time,
         });
 
         // Updated: Close escrow_token_account, refund rent to seller
@@ -518,9 +526,12 @@ pub mod localsolana_contracts {
 
             // Emit escrow balance changed event
             emit!(EscrowBalanceChanged {
+                object_id: escrow_key,
                 escrow_id,
+                trade_id,
                 new_balance: 0,
                 reason: "Escrow cancelled".to_string(),
+                timestamp: current_time,
             });
 
             // Updated: Close escrow_token_account
@@ -860,9 +871,12 @@ pub mod localsolana_contracts {
 
         // emit escrow balance change event
         emit!(EscrowBalanceChanged {
+            object_id: escrow_key,
             escrow_id,
+            trade_id,
             new_balance: 0,
-            reason: "Dispute resolved".to_string(),
+            reason: "Dispute resolved by default judgment".to_string(),
+            timestamp: current_time,
         });
 
         // Create arrays with longer lifetimes before the conditional block
@@ -1071,9 +1085,12 @@ pub mod localsolana_contracts {
 
             // emit escrow balance change event
             emit!(EscrowBalanceChanged {
+                object_id: escrow_key,
                 escrow_id,
+                trade_id,
                 new_balance: 0,
-                reason: "Dispute resolved".to_string(),
+                reason: "Dispute resolved to buyer".to_string(),
+                timestamp: current_time,
             });
 
         } else {
@@ -1102,9 +1119,12 @@ pub mod localsolana_contracts {
 
             // emit escrow balance change event
             emit!(EscrowBalanceChanged {
+                object_id: escrow_key,
                 escrow_id,
+                trade_id,
                 new_balance: 0,
-                reason: "Dispute resolved".to_string(),
+                reason: "Dispute resolved to seller".to_string(),
+                timestamp: current_time,
             });
         }
 
@@ -1312,9 +1332,12 @@ pub mod localsolana_contracts {
 
             // emit escrow balance change event
             emit!(EscrowBalanceChanged {
+                object_id: escrow_key,
                 escrow_id,
+                trade_id,
                 new_balance: 0,
-                reason: "Escrow cancelled".to_string(),
+                reason: "Escrow auto-cancelled".to_string(),
+                timestamp: current_time,
             });
 
             token::close_account(CpiContext::new_with_signer(
