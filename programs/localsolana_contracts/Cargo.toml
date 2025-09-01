@@ -1,6 +1,6 @@
 [package]
 name = "localsolana_contracts"
-version = "0.1.0"
+version = "0.1.2"
 description = "Created with Anchor"
 edition = "2021"
 
@@ -17,8 +17,8 @@ no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = "0.31.0"
+anchor-lang = { workspace = true }
 
 [dependencies.anchor-spl]
-version = "0.31.0"
+workspace = true
 features = ["token"]
