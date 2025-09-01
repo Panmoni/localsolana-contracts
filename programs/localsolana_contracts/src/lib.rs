@@ -176,22 +176,29 @@ pub mod localsolana_contracts {
     }
 
     pub fn fund_escrow(ctx: Context<FundEscrow>) -> Result<()> {
+
+        use constants::MAX_U64;
+
+        // pull up vars
+        let escrow = &mut ctx.accounts.escrow;
+        let escrow_key = escrow.key();
+        let escrow_id = escrow.escrow_id;
+        let trade_id = escrow.trade_id;
+        let amount = escrow.amount;
+        let fee = escrow.fee;
+        let state = escrow.state;
+        let deposit_deadline = escrow.deposit_deadline;
+        let seller_key = escrow.seller;
+
         // Verify escrow state
-        require!(ctx.accounts.escrow.state == EscrowState::Created, EscrowError::InvalidState);
+        require!(state == EscrowState::Created, EscrowError::InvalidState);
 
         // Verify deposit deadline
         let current_time = Clock::get()?.unix_timestamp;
-        require!(current_time <= ctx.accounts.escrow.deposit_deadline, EscrowError::DepositDeadlineExpired);
+        require!(current_time <= deposit_deadline, EscrowError::DepositDeadlineExpired);
 
         // Verify caller is seller
-        require!(ctx.accounts.seller.key() == ctx.accounts.escrow.seller, EscrowError::Unauthorized);
-
-        // Calculate total amount (principal + fee)
-        let amount = ctx.accounts.escrow.amount;
-        let fee = ctx.accounts.escrow.fee;
-        let escrow_id = ctx.accounts.escrow.escrow_id;
-        let trade_id = ctx.accounts.escrow.trade_id;
-        use constants::MAX_U64;
+        require!(ctx.accounts.seller.key() == seller_key, EscrowError::Unauthorized);
 
         let total_amount = amount
             .checked_add(fee)
@@ -222,11 +229,7 @@ pub mod localsolana_contracts {
             .checked_add(FIAT_DEADLINE_MINUTES * SECONDS_PER_MINUTE)
             .ok_or(EscrowError::FeeCalculationError)?;
 
-        // Get escrow key for event
-        let escrow_key = ctx.accounts.escrow.key();
-
         // Update escrow state
-        let escrow = &mut ctx.accounts.escrow;
         escrow.state = EscrowState::Funded;
         escrow.counter = escrow.counter.checked_add(1).unwrap();
         escrow.fiat_deadline = fiat_deadline;
@@ -314,6 +317,8 @@ pub mod localsolana_contracts {
 
         let escrow_id = ctx.accounts.escrow.escrow_id;
         let current_time = Clock::get()?.unix_timestamp;
+        let escrow_key = ctx.accounts.escrow.key();
+        let trade_id = ctx.accounts.escrow.trade_id;
 
         // Emit event for sequential escrow address change
         emit!(SequentialAddressUpdated {
@@ -329,33 +334,42 @@ pub mod localsolana_contracts {
     }
 
     pub fn release_escrow(ctx: Context<ReleaseEscrow>) -> Result<()> {
+
+        // pull up vars
+        let escrow = &mut ctx.accounts.escrow;
+        let escrow_key = escrow.key();
+        let escrow_id = escrow.escrow_id;
+        let trade_id = escrow.trade_id;
+        let amount = escrow.amount;
+        let fee = escrow.fee;
+        let state = escrow.state;
+        let seller = escrow.seller;
+        let arbitrator = escrow.arbitrator;
+        let fiat_paid = escrow.fiat_paid;
+        let is_sequential = escrow.sequential;
+        let sequential_escrow_address = escrow.sequential_escrow_address;
+        let buyer = escrow.buyer;
+
         // Verify escrow state
-        require!(ctx.accounts.escrow.state == EscrowState::Funded, EscrowError::InvalidState);
+        require!(state == EscrowState::Funded, EscrowError::InvalidState);
 
         // Verify caller is seller or arbitrator
         let caller = ctx.accounts.authority.key();
         require!(
-            caller == ctx.accounts.escrow.seller || caller == ctx.accounts.escrow.arbitrator,
+            caller == seller || caller == arbitrator,
             EscrowError::Unauthorized
         );
 
         // Verify fiat is marked as paid
-        require!(ctx.accounts.escrow.fiat_paid, EscrowError::InvalidState);
+        require!(fiat_paid, EscrowError::InvalidState);
 
         // For sequential trades, verify sequential_escrow_address exists
-        let is_sequential = ctx.accounts.escrow.sequential;
         if is_sequential {
-            require!(ctx.accounts.escrow.sequential_escrow_address.is_some(), EscrowError::MissingSequentialAddress);
+            require!(sequential_escrow_address.is_some(), EscrowError::MissingSequentialAddress);
             require!(ctx.accounts.sequential_escrow_token_account.is_some(), EscrowError::MissingSequentialAddress);
         }
 
         let current_time = Clock::get()?.unix_timestamp;
-        let escrow_key = ctx.accounts.escrow.key();
-        let amount = ctx.accounts.escrow.amount;
-        let fee = ctx.accounts.escrow.fee;
-        let escrow_id = ctx.accounts.escrow.escrow_id;
-        let trade_id = ctx.accounts.escrow.trade_id;
-        let buyer = ctx.accounts.escrow.buyer;
 
         // Create PDA signer seeds
         let escrow_token_bump = ctx.bumps.escrow_token_account;
@@ -431,7 +445,6 @@ pub mod localsolana_contracts {
         token::close_account(close_token_context)?;
 
         // Updated: Close escrow state account, refund rent to seller
-        let escrow = &mut ctx.accounts.escrow;
         escrow.state = EscrowState::Released;
         escrow.counter = escrow.counter.checked_add(1).unwrap();
         let counter = escrow.counter;
@@ -459,8 +472,21 @@ pub mod localsolana_contracts {
     }
 
     pub fn cancel_escrow(ctx: Context<CancelEscrow>) -> Result<()> {
+
+        use constants::MAX_U64;
+
+        // pull up vars
+        let current_time = Clock::get()?.unix_timestamp;
+        let escrow = &mut ctx.accounts.escrow;
+        let escrow_key = escrow.key();
+        let escrow_id = escrow.escrow_id;
+        let trade_id = escrow.trade_id;
+        let amount = escrow.amount;
+        let fee = escrow.fee;
+        let seller = escrow.seller;
+
         // Verify escrow state
-        let current_state = ctx.accounts.escrow.state;
+        let current_state = escrow.state;
         require!(
             current_state == EscrowState::Created || current_state == EscrowState::Funded,
             EscrowError::InvalidState
@@ -469,21 +495,12 @@ pub mod localsolana_contracts {
         // Verify caller is seller or arbitrator
         let caller = ctx.accounts.authority.key();
         require!(
-            caller == ctx.accounts.escrow.seller || caller == ctx.accounts.escrow.arbitrator,
+            caller == escrow.seller || caller == escrow.arbitrator,
             EscrowError::Unauthorized
         );
 
         // Verify fiat is not marked as paid
-        require!(!ctx.accounts.escrow.fiat_paid, EscrowError::InvalidState);
-
-        let current_time = Clock::get()?.unix_timestamp;
-        let escrow_key = ctx.accounts.escrow.key();
-        let amount = ctx.accounts.escrow.amount;
-        let fee = ctx.accounts.escrow.fee;
-        let escrow_id = ctx.accounts.escrow.escrow_id;
-        let trade_id = ctx.accounts.escrow.trade_id;
-        let seller = ctx.accounts.escrow.seller;
-        use constants::MAX_U64;
+        require!(!escrow.fiat_paid, EscrowError::InvalidState);
 
         // If escrow is funded, return funds to seller
         if current_state == EscrowState::Funded {
@@ -548,9 +565,7 @@ pub mod localsolana_contracts {
             token::close_account(close_token_context)?;
         }
 
-
         // Update escrow state
-        let escrow = &mut ctx.accounts.escrow;
         escrow.state = EscrowState::Cancelled;
         escrow.counter = escrow.counter.checked_add(1).unwrap();
         let counter = escrow.counter;
@@ -769,40 +784,48 @@ pub mod localsolana_contracts {
     }
 
     pub fn default_judgment(ctx: Context<DefaultJudgment>) -> Result<()> {
+
+        use constants::MAX_U64;
+
+        // pull up vars
+        let current_time = Clock::get()?.unix_timestamp;
+        let escrow = &mut ctx.accounts.escrow;
+        let escrow_key = escrow.key();
+        let escrow_id = escrow.escrow_id;
+        let trade_id = escrow.trade_id;
+        let amount = escrow.amount;
+        let fee = escrow.fee;
+        let escrow_buyer = escrow.buyer;
+        let escrow_seller = escrow.seller;
+        let dispute_initiator_opt = escrow.dispute_initiator;
+        let dispute_initiated_time = escrow.dispute_initiated_time;
+
         // Verify escrow state
-        require!(ctx.accounts.escrow.state == EscrowState::Disputed, EscrowError::InvalidState);
+        require!(escrow.state == EscrowState::Disputed, EscrowError::InvalidState);
 
         // Verify caller is the arbitrator
         require!(
-            ctx.accounts.arbitrator.key() == ctx.accounts.escrow.arbitrator,
+            ctx.accounts.arbitrator.key() == escrow.arbitrator,
             EscrowError::Unauthorized
         );
 
         // Verify dispute initiator exists
-        let dispute_initiator_opt = ctx.accounts.escrow.dispute_initiator;
         require!(dispute_initiator_opt.is_some(), EscrowError::InvalidState);
         let dispute_initiator = dispute_initiator_opt.unwrap();
 
         // Verify response deadline has passed
-        let current_time = Clock::get()?.unix_timestamp;
-        let dispute_initiated_time = ctx.accounts.escrow.dispute_initiated_time.unwrap();
+        let dispute_initiated_time = dispute_initiated_time.unwrap();
         let response_deadline = dispute_initiated_time
             .checked_add(DISPUTE_RESPONSE_DEADLINE_HOURS * SECONDS_PER_HOUR)
             .ok_or(EscrowError::FeeCalculationError)?;
 
         require!(current_time > response_deadline, EscrowError::InvalidState);
 
-        // Store important values
-        let escrow_buyer = ctx.accounts.escrow.buyer;
-        let escrow_seller = ctx.accounts.escrow.seller;
-        let escrow_id = ctx.accounts.escrow.escrow_id;
-        let trade_id = ctx.accounts.escrow.trade_id;
-        let escrow_key = ctx.accounts.escrow.key();
-
         // Determine winning party (the one who submitted evidence/bond)
-        let evidence_hash_buyer = ctx.accounts.escrow.dispute_evidence_hash_buyer;
-        let evidence_hash_seller = ctx.accounts.escrow.dispute_evidence_hash_seller;
+        let evidence_hash_buyer = escrow.dispute_evidence_hash_buyer;
+        let evidence_hash_seller = escrow.dispute_evidence_hash_seller;
 
+        // Determine winner
         let winner = if dispute_initiator == escrow_buyer {
             // Buyer initiated dispute, check if seller responded
             if evidence_hash_seller.is_none() {
@@ -820,10 +843,6 @@ pub mod localsolana_contracts {
         };
 
         // Calculate bond amount and total amount
-        let amount = ctx.accounts.escrow.amount;
-        let fee = ctx.accounts.escrow.fee;
-        use constants::MAX_U64;
-
         let total_amount = amount
             .checked_add(fee)
             .ok_or(EscrowError::FeeCalculationError)?
@@ -941,7 +960,6 @@ pub mod localsolana_contracts {
         ))?;
 
         // Update escrow state
-        let escrow = &mut ctx.accounts.escrow;
         escrow.state = EscrowState::Resolved;
 
         // Determine defaulting party
@@ -968,35 +986,40 @@ pub mod localsolana_contracts {
         decision: bool, // true = release to buyer, false = return to seller
         resolution_hash: [u8; 32],
     ) -> Result<()> {
+        use constants::MAX_U64;
+
+        // pull up common vars
+        let current_time = Clock::get()?.unix_timestamp;
+        let escrow = &mut ctx.accounts.escrow;
+        let escrow_key = escrow.key();
+        let escrow_id = escrow.escrow_id;
+        let trade_id = escrow.trade_id;
+        let amount = escrow.amount;
+        let fee = escrow.fee;
+        let escrow_buyer = escrow.buyer;
+        let escrow_seller = escrow.seller;
+        let is_sequential = escrow.sequential;
+        let sequential_escrow_address = escrow.sequential_escrow_address;
+        let evidence_hash_buyer = escrow.dispute_evidence_hash_buyer;
+        let evidence_hash_seller = escrow.dispute_evidence_hash_seller;
+
         // Verify escrow state
-        require!(ctx.accounts.escrow.state == EscrowState::Disputed, EscrowError::InvalidState);
+        require!(escrow.state == EscrowState::Disputed, EscrowError::InvalidState);
 
         // Verify caller is the arbitrator
         require!(
-            ctx.accounts.arbitrator.key() == ctx.accounts.escrow.arbitrator,
+            ctx.accounts.arbitrator.key() == escrow.arbitrator,
             EscrowError::Unauthorized
         );
 
         // Verify both evidence hashes are present
-        let evidence_hash_buyer = ctx.accounts.escrow.dispute_evidence_hash_buyer;
-        let evidence_hash_seller = ctx.accounts.escrow.dispute_evidence_hash_seller;
-
         require!(
             evidence_hash_buyer.is_some() && evidence_hash_seller.is_some(),
             EscrowError::InvalidEvidenceHash
         );
 
-        // Store key data
-        let amount = ctx.accounts.escrow.amount;
-        let fee = ctx.accounts.escrow.fee;
-        let escrow_buyer = ctx.accounts.escrow.buyer;
-        let escrow_seller = ctx.accounts.escrow.seller;
-        let escrow_id = ctx.accounts.escrow.escrow_id;
-        let trade_id = ctx.accounts.escrow.trade_id;
-        let escrow_key = ctx.accounts.escrow.key();
-        let is_sequential = ctx.accounts.escrow.sequential;
-        let sequential_escrow_address = ctx.accounts.escrow.sequential_escrow_address;
-        use constants::MAX_U64;
+        // Store resolution hash
+        escrow.dispute_resolution_hash = Some(resolution_hash);
 
         // Calculate bond amount (5% of transaction value)
         let bond_amount = amount
@@ -1012,12 +1035,6 @@ pub mod localsolana_contracts {
             ctx.accounts.seller_bond_account.amount >= bond_amount,
             EscrowError::MissingDisputeBond
         );
-
-        let current_time = Clock::get()?.unix_timestamp;
-
-        // Store resolution hash
-        let escrow = &mut ctx.accounts.escrow;
-        escrow.dispute_resolution_hash = Some(resolution_hash);
 
         // Determine winning and losing parties based on decision
         let (winning_party, winning_token_account, winning_bond_account, losing_bond_account) =
@@ -1064,8 +1081,6 @@ pub mod localsolana_contracts {
             );
 
             token::transfer(fee_transfer_context, fee)?;
-
-            let signer_seeds = &[&escrow_token_seeds[..]];
 
             // Transfer principal to buyer
             let principal_transfer_context = CpiContext::new_with_signer(
@@ -1250,33 +1265,36 @@ pub mod localsolana_contracts {
     }
 
     pub fn auto_cancel(ctx: Context<AutoCancel>) -> Result<()> {
+        use constants::MAX_U64;
+
+        // pull up vars
+        let current_time = Clock::get()?.unix_timestamp;
+        let escrow = &mut ctx.accounts.escrow;
+        let escrow_key = escrow.key();
+        let escrow_id = escrow.escrow_id;
+        let trade_id = escrow.trade_id;
+        let amount = escrow.amount;
+        let fee = escrow.fee;
+        let seller = escrow.seller;
+        let current_state = escrow.state;
+        let deposit_deadline = escrow.deposit_deadline;
+        let fiat_deadline = escrow.fiat_deadline;
+        let fiat_paid = escrow.fiat_paid;
+
+
         // Verify caller is the arbitrator
         require!(
-            ctx.accounts.arbitrator.key() == ctx.accounts.escrow.arbitrator,
+            ctx.accounts.arbitrator.key() == escrow.arbitrator,
             EscrowError::Unauthorized
         );
 
         // Verify escrow is not in a terminal state
-        let current_state = ctx.accounts.escrow.state;
         require!(
             current_state != EscrowState::Released &&
             current_state != EscrowState::Cancelled &&
             current_state != EscrowState::Resolved,
             EscrowError::TerminalState
         );
-
-        // Store key data
-        let current_time = Clock::get()?.unix_timestamp;
-        let deposit_deadline = ctx.accounts.escrow.deposit_deadline;
-        let fiat_deadline = ctx.accounts.escrow.fiat_deadline;
-        let fiat_paid = ctx.accounts.escrow.fiat_paid;
-        let amount = ctx.accounts.escrow.amount;
-        let fee = ctx.accounts.escrow.fee;
-        let escrow_id = ctx.accounts.escrow.escrow_id;
-        let trade_id = ctx.accounts.escrow.trade_id;
-        let seller = ctx.accounts.escrow.seller;
-        let escrow_key = ctx.accounts.escrow.key();
-        use constants::MAX_U64;
 
         // Check for deposit deadline expiry in Created state
         if current_state == EscrowState::Created {
@@ -1352,7 +1370,6 @@ pub mod localsolana_contracts {
         }
 
         // Update escrow state
-        let escrow = &mut ctx.accounts.escrow;
         escrow.state = EscrowState::Cancelled;
         escrow.counter = escrow.counter.checked_add(1).unwrap();
         let counter = escrow.counter;
