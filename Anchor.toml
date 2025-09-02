@@ -18,8 +18,12 @@ url = "https://api.apr.dev"
 
 [provider]
 # cluster = "devnet"
-cluster = "https://distinguished-chaotic-bird.solana-devnet.quiknode.pro/483d675967ac17c1970a9b07fdba88abe17d421e/"
-wallet = "~/repos/ls-contracts-fixed/keys/devnet/program-keypair.json"
+# cluster = "https://distinguished-chaotic-bird.solana-devnet.quiknode.pro/483d675967ac17c1970a9b07fdba88abe17d421e/"
+# wallet = "~/repos/ls-contracts-fixed/keys/devnet/program-keypair.json"
+
+# Localnet
+cluster = "http://127.0.0.1:8899"
+wallet = "/home/george5492/.config/solana/id.json"
 
 [test]
 skip_deploy = true
