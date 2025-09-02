@@ -1,5 +1,5 @@
 /*
- * LOCAL SOLANA ESCROW CONTRACT
+ * LOCAL SOLANA ESCROW CONTRACT version 0.1.2
  *
  * This is a decentralized escrow service built on Solana that enables secure peer-to-peer
  * trading with automated dispute resolution. The contract acts as a trusted intermediary
