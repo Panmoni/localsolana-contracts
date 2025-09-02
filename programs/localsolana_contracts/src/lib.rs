@@ -1,3 +1,53 @@
+/*
+ * LOCAL SOLANA ESCROW CONTRACT
+ *
+ * This is a decentralized escrow service built on Solana that enables secure peer-to-peer
+ * trading with automated dispute resolution. The contract acts as a trusted intermediary
+ * that holds funds until trade conditions are met.
+ *
+ * HOW IT WORKS:
+ *
+ * 1. ESCROW CREATION & FUNDING:
+ *    - Seller creates an escrow with trade details (amount, deadlines, sequential trade support)
+ *    - Seller funds the escrow with principal + 1% fee
+ *    - 15-minute deposit deadline for funding, 30-minute fiat payment deadline
+ *
+ * 2. TRADE EXECUTION:
+ *    - Buyer marks fiat payment as completed
+ *    - Seller can then release funds to buyer (or next sequential escrow)
+ *    - Supports sequential trades where funds flow to another escrow
+ *
+ * 3. DISPUTE RESOLUTION:
+ *    - Either party can open a dispute by posting a 5% bond
+ *    - Both parties submit evidence hashes and bonds
+ *    - 72-hour response deadline for non-initiating party
+ *    - Arbitrator makes final decision within 7 days
+ *    - Winner gets their bond back, loser's bond goes to platform
+ *
+ * 4. AUTOMATED SAFEGUARDS:
+ *    - Auto-cancellation if deadlines expire
+ *    - Default judgment if one party doesn't respond to dispute
+ *    - Secure PDA-based token accounts with proper authority controls
+ *
+ * KEY FEATURES:
+ * - Maximum trade size: 100 USDC
+ * - 1% platform fee on all trades
+ * - 5% dispute bond requirement
+ * - Sequential trade support for complex trading flows
+ * - Comprehensive event logging for off-chain indexing
+ * - Rent refunds to reduce user costs
+ *
+ * SECURITY:
+ * - Only authorized parties can perform actions
+ * - PDA-derived addresses prevent address spoofing
+ * - Proper state machine prevents invalid transitions
+ * - Bond system discourages frivolous disputes
+ *
+ * This contract enables trustless trading while providing robust dispute resolution
+ * mechanisms, making it suitable for P2P commerce, OTC trading, and other
+ * scenarios requiring secure escrow services.
+ */
+
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, Transfer, CloseAccount};
 
