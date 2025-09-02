@@ -8,10 +8,10 @@ skip-lint = false
 seeds = true
 
 [programs.localnet]
-localsolana_contracts = "4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x"
+localsolana_contracts = "D7KnbDFa85CwPbN5DzXKfPcKg5KNXRiQQMEoDTP4FRLe"
 
 [programs.devnet]
-localsolana_contracts = "4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x"
+localsolana_contracts = "D7KnbDFa85CwPbN5DzXKfPcKg5KNXRiQQMEoDTP4FRLe"
 
 [registry]
 url = "https://api.apr.dev"
