@@ -51,7 +51,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, Transfer, CloseAccount};
 
-declare_id!("4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x");
+declare_id!("D7KnbDFa85CwPbN5DzXKfPcKg5KNXRiQQMEoDTP4FRLe");
 
 mod constants {
     // Maximum amount allowed (100 USDC)
