@@ -10,6 +10,106 @@ import { LocalsolanaContracts } from "../target/types/localsolana_contracts";
 
 dotenv.config();
 
+// Transaction Logger Utility
+class TransactionLogger {
+  private logFile: string;
+  private verbose: boolean;
+  private isDevnet: boolean;
+  private blockExplorerUrl: string;
+
+  constructor() {
+    this.logFile = "escrow-transactions.log";
+    this.verbose = process.env.VERBOSE_LOGGING === "true";
+    this.isDevnet = !process.env.ANCHOR_PROVIDER_URL?.includes('127.0.0.1') &&
+                    !process.env.ANCHOR_PROVIDER_URL?.includes('localhost');
+    this.blockExplorerUrl = process.env.BLOCK_EXPLORER_DEVNET || "https://explorer.solana.com/?cluster=devnet";
+  }
+
+  public formatUsdcAmount(amount: BN): string {
+    return (amount.toNumber() / 1_000_000).toFixed(2);
+  }
+
+  private createBlockExplorerLink(txSignature: string): string {
+    if (!this.isDevnet) return "";
+    return `${this.blockExplorerUrl.replace("?cluster=devnet", "")}/tx/${txSignature}?cluster=devnet`;
+  }
+
+  private logToFile(message: string) {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] ${message}\n`;
+    fs.appendFileSync(this.logFile, logEntry);
+  }
+
+  private logToConsole(message: string, color: string) {
+    console.log(color, message, "\x1b[0m"); // Reset color
+  }
+
+  logUsdcTransfer(
+    amount: BN,
+    destination: string,
+    txSignature: string,
+    transferType: "buyer" | "seller" | "arbitrator" | "escrow" | "bond" | "sequential" | "return"
+  ) {
+    if (!this.verbose) return;
+
+    const usdcAmount = this.formatUsdcAmount(amount);
+    const blockExplorerLink = this.createBlockExplorerLink(txSignature);
+
+    // Color coding based on transfer type
+    const colors = {
+      buyer: "\x1b[34m",      // Blue
+      seller: "\x1b[32m",     // Green
+      arbitrator: "\x1b[33m", // Yellow
+      escrow: "\x1b[35m",     // Magenta
+      bond: "\x1b[36m",       // Cyan
+      sequential: "\x1b[37m", // White
+      return: "\x1b[31m"      // Red
+    };
+
+    const emojis = {
+      buyer: "🔵",
+      seller: "🟢",
+      arbitrator: "🟡",
+      escrow: "🟣",
+      bond: "🔷",
+      sequential: "⚪",
+      return: "🔴"
+    };
+
+    const color = colors[transferType];
+    const emoji = emojis[transferType];
+
+    let logMessage = `${emoji} USDC Transfer: ${usdcAmount} USDC sent to ${destination}`;
+    if (blockExplorerLink) {
+      logMessage += `\n   Transaction: ${blockExplorerLink}`;
+    }
+
+    // Log to console with color
+    this.logToConsole(logMessage, color);
+
+    // Log to file without color codes
+    const fileMessage = `${emoji} USDC Transfer: ${usdcAmount} USDC sent to ${destination}${blockExplorerLink ? ` | Transaction: ${txSignature}` : ""}`;
+    this.logToFile(fileMessage);
+  }
+
+  logEscrowOperation(operation: string, details: string, txSignature?: string) {
+    if (!this.verbose) return;
+
+    const timestamp = new Date().toISOString();
+    const logMessage = `📋 Escrow Operation: ${operation} - ${details}`;
+
+    // Log to console
+    console.log("\x1b[36m", logMessage, "\x1b[0m");
+
+    // Log to file
+    const fileMessage = `📋 Escrow Operation: ${operation} - ${details}${txSignature ? ` | Transaction: ${txSignature}` : ""}`;
+    this.logToFile(fileMessage);
+  }
+}
+
+// Initialize transaction logger
+const txLogger = new TransactionLogger();
+
 function loadKeypair(filePath: string): Keypair {
   const absolutePath = filePath.startsWith("~")
     ? path.join(process.env.HOME || process.env.USERPROFILE || ".", filePath.slice(1))
@@ -148,7 +248,7 @@ describe("Localsolana Contracts Tests", () => {
         await provider.connection.confirmTransaction(releaseTx, "confirmed");
         console.log("Released escrow, USDC sent to buyer/sequential");
       }
-      await sleep(10000);
+      await sleep(1000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.uiAmount;
       console.log(`Seller USDC after cleanup: ${sellerBalanceAfter}`);
@@ -434,10 +534,10 @@ describe("Localsolana Contracts Tests", () => {
 
     const sellerBalance = await provider.connection.getTokenAccountBalance(sellerTokenAccount);
     console.log("Seller token balance:", sellerBalance.value.uiAmount);
-    await sleep(10000); // Pace RPC calls
+    await sleep(1000); // Pace RPC calls
     const buyerBalance = await provider.connection.getTokenAccountBalance(buyerTokenAccount);
     console.log("Buyer token balance:", buyerBalance.value.uiAmount);
-    await sleep(10000);
+    await sleep(1000);
     const arbitratorBalance = await provider.connection.getTokenAccountBalance(arbitratorTokenAccount);
     console.log("Arbitrator USDC balance:", arbitratorBalance.value.uiAmount);
   });
@@ -471,7 +571,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx, "confirmed");
-       await sleep(10000); // Slow down
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx
+      );
+
+      await sleep(1000); // Slow down
 
       console.log("Transaction signature:", tx);
       const sellerBalanceAfter = await provider.connection.getBalance(seller.publicKey);
@@ -513,7 +621,7 @@ describe("Localsolana Contracts Tests", () => {
       .signers([seller])
       .rpc();
     await provider.connection.confirmTransaction(cancelTx, "confirmed");
-     await sleep(10000);
+     await sleep(1000);
 
     await cleanupEscrow(escrowPDA, null, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
@@ -537,7 +645,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       console.log(`Seller token balance before: ${sellerBalanceBefore}`);
@@ -557,7 +673,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const escrowBalance = (await provider.connection.getTokenAccountBalance(escrowTokenPDA)).value.amount;
@@ -596,7 +721,16 @@ describe("Localsolana Contracts Tests", () => {
       .signers([seller])
       .rpc();
     await provider.connection.confirmTransaction(cancelTx, "confirmed");
-     await sleep(10000);
+
+    // Log USDC return to seller from cancellation
+    txLogger.logUsdcTransfer(
+      amount.add(amount.div(new BN(100))), // Principal + fee returned
+      "Seller (Return from Cancellation)",
+      cancelTx,
+      "return"
+    );
+
+    await sleep(1000);
 
     await cleanupEscrow(escrowPDA, escrowTokenPDA, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
@@ -620,7 +754,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -637,7 +779,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -648,7 +790,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const escrowAccount = await program.account.escrow.fetch(escrowPDA);
       assert.isTrue(escrowAccount.fiatPaid, "Fiat paid should be true");
@@ -668,7 +810,7 @@ describe("Localsolana Contracts Tests", () => {
       .signers([seller])
       .rpc();
     await provider.connection.confirmTransaction(releaseTx, "confirmed");
-     await sleep(10000);
+     await sleep(1000);
 
     await cleanupEscrow(escrowPDA, escrowTokenPDA, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
@@ -692,7 +834,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -709,7 +859,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -720,7 +870,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+
+      // Log fiat payment marking
+      txLogger.logEscrowOperation(
+        "Fiat Payment Marked",
+        "Buyer confirmed fiat payment received",
+        tx3
+      );
+
+      await sleep(1000);
 
       const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -740,7 +898,23 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfers from escrow release
+      txLogger.logUsdcTransfer(
+        amount, // Principal amount to buyer
+        "Buyer",
+        tx4,
+        "buyer"
+      );
+
+      txLogger.logUsdcTransfer(
+        amount.div(new BN(100)), // Fee amount to arbitrator
+        "Arbitrator (Fee)",
+        tx4,
+        "arbitrator"
+      );
+
+      await sleep(1000);
 
       const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -795,7 +969,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx, "confirmed");
-         await sleep(10000);
+
+      // Log sequential escrow creation
+      txLogger.logEscrowOperation(
+        "Sequential Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, Sequential: ${sequentialAddress.toBase58()}`,
+        tx
+      );
+
+      await sleep(1000);
 
       console.log("Sequential escrow transaction signature:", tx);
 
@@ -854,7 +1036,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       // Capture the transaction to check for events
       const tx2 = await program.methods
@@ -866,7 +1048,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+
+      // Log sequential address update
+      txLogger.logEscrowOperation(
+        "Sequential Address Updated",
+        `From: ${initialSequentialAddress.toBase58()} → To: ${newSequentialAddress.toBase58()}`,
+        tx2
+      );
+
+      await sleep(1000);
 
       // Get transaction details to check for SequentialAddressUpdated event
       const txDetails = await provider.connection.getTransaction(tx2, {
@@ -903,7 +1093,7 @@ describe("Localsolana Contracts Tests", () => {
       console.log("=== Sequential Escrow Release ===");
       const sequentialTokenAccount = await createSequentialTokenAccount(sequentialAddress);
       console.log("Sequential token account:", sequentialTokenAccount.toBase58());
-      await sleep(10000);
+      await sleep(1000);
 
       const tx1 = await program.methods
         .createEscrow(escrowId, tradeId, amount, true, sequentialAddress)
@@ -916,7 +1106,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log sequential escrow creation
+      txLogger.logEscrowOperation(
+        "Sequential Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, Sequential: ${sequentialAddress.toBase58()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -933,7 +1131,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -944,7 +1142,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const sequentialBalanceBefore = (await provider.connection.getTokenAccountBalance(sequentialTokenAccount)).value.amount;
       const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -963,7 +1161,23 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfers from sequential escrow release
+      txLogger.logUsdcTransfer(
+        amount, // Principal amount to sequential account
+        "Sequential Account",
+        tx4,
+        "sequential"
+      );
+
+      txLogger.logUsdcTransfer(
+        amount.div(new BN(100)), // Fee amount to arbitrator
+        "Arbitrator (Fee)",
+        tx4,
+        "arbitrator"
+      );
+
+      await sleep(1000);
 
       const sequentialBalanceAfter = (await provider.connection.getTokenAccountBalance(sequentialTokenAccount)).value.amount;
       const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -1013,7 +1227,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const sellerLamportsBefore = await provider.connection.getBalance(seller.publicKey);
 
@@ -1030,7 +1252,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const sellerLamportsAfter = await provider.connection.getBalance(seller.publicKey);
 
@@ -1063,7 +1285,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -1080,7 +1310,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const sellerLamportsBefore = await provider.connection.getBalance(seller.publicKey);
@@ -1098,7 +1337,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+
+      // Log USDC return to seller from cancellation
+      txLogger.logUsdcTransfer(
+        amount.add(amount.div(new BN(100))), // Principal + fee returned
+        "Seller (Return from Cancellation)",
+        tx3,
+        "return"
+      );
+
+      await sleep(1000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const sellerLamportsAfter = await provider.connection.getBalance(seller.publicKey);
@@ -1139,7 +1387,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -1156,7 +1412,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -1167,7 +1432,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       try {
         await program.methods
@@ -1220,7 +1485,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
@@ -1236,7 +1509,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+
+      // Log bond account initialization
+      txLogger.logEscrowOperation(
+        "Buyer Bond Account Initialized",
+        `Account: ${buyerBondPDA.toBase58()}`,
+        tx2
+      );
+
+      await sleep(1000);
 
       const tx3 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
@@ -1252,7 +1533,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+
+      // Log bond account initialization
+      txLogger.logEscrowOperation(
+        "Seller Bond Account Initialized",
+        `Account: ${sellerBondPDA.toBase58()}`,
+        tx3
+      );
+
+      await sleep(1000);
 
       const buyerBondAccount = await provider.connection.getTokenAccountBalance(buyerBondPDA);
       const sellerBondAccount = await provider.connection.getTokenAccountBalance(sellerBondPDA);
@@ -1291,7 +1580,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -1308,7 +1597,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -1319,7 +1608,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
@@ -1335,7 +1624,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
@@ -1351,7 +1640,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx5, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const tx6 = await program.methods
@@ -1367,7 +1656,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx6, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const buyerBondBalance = (await provider.connection.getTokenAccountBalance(buyerBondPDA)).value.amount;
@@ -1410,7 +1699,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([arbitrator])
         .rpc();
       await provider.connection.confirmTransaction(resolveTx, "confirmed");
-      await sleep(10000);
+      await sleep(1000);
     });
 
     // TODO: Fix dispute response test - currently failing with evidence hash validation
@@ -1439,7 +1728,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -1456,7 +1745,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -1467,7 +1756,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
@@ -1483,7 +1772,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
@@ -1499,7 +1788,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx5, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx6 = await program.methods
         .openDisputeWithBond(buyerEvidenceHash)
@@ -1514,7 +1803,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx6, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const tx7 = await program.methods
@@ -1530,7 +1819,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx7, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const sellerBondBalance = (await provider.connection.getTokenAccountBalance(sellerBondPDA)).value.amount;
@@ -1572,7 +1861,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([arbitrator])
         .rpc();
       await provider.connection.confirmTransaction(resolveTx, "confirmed");
-      await sleep(10000);
+      await sleep(1000);
     });
 
     it("Resolves dispute with buyer winning", async () => {
@@ -1602,7 +1891,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -1619,7 +1916,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -1630,7 +1936,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
@@ -1646,7 +1952,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
@@ -1662,7 +1968,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx5, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx6 = await program.methods
         .openDisputeWithBond(buyerEvidenceHash)
@@ -1677,7 +1983,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx6, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx7 = await program.methods
         .respondToDisputeWithBond(sellerEvidenceHash)
@@ -1692,7 +1998,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx7, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const buyerBalanceBefore = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -1716,7 +2022,36 @@ describe("Localsolana Contracts Tests", () => {
         .signers([arbitrator])
         .rpc();
       await provider.connection.confirmTransaction(tx8, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfers from dispute resolution (buyer wins)
+      txLogger.logUsdcTransfer(
+        amount, // Principal amount to buyer
+        "Buyer (Principal)",
+        tx8,
+        "buyer"
+      );
+
+      txLogger.logUsdcTransfer(
+        amount.div(new BN(20)), // Buyer bond returned (5% of amount)
+        "Buyer (Bond Return)",
+        tx8,
+        "buyer"
+      );
+
+      txLogger.logUsdcTransfer(
+        amount.div(new BN(100)), // Fee to arbitrator
+        "Arbitrator (Fee)",
+        tx8,
+        "arbitrator"
+      );
+
+      txLogger.logUsdcTransfer(
+        amount.div(new BN(20)), // Seller bond to arbitrator
+        tx8,
+        "arbitrator"
+      );
+
+      await sleep(1000);
 
       const buyerBalanceAfter = (await provider.connection.getTokenAccountBalance(buyerTokenAccount)).value.amount;
       const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -1770,7 +2105,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const tx2 = await program.methods
         .fundEscrow()
@@ -1787,7 +2130,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-         await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       const tx3 = await program.methods
         .markFiatPaid()
@@ -1798,7 +2150,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx4 = await program.methods
         .initializeBuyerBondAccount(escrowId, tradeId)
@@ -1814,7 +2166,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx5 = await program.methods
         .initializeSellerBondAccount(escrowId, tradeId)
@@ -1830,7 +2182,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx5, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx6 = await program.methods
         .openDisputeWithBond(buyerEvidenceHash)
@@ -1845,7 +2197,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx6, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const tx7 = await program.methods
         .respondToDisputeWithBond(sellerEvidenceHash)
@@ -1860,7 +2212,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx7, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const arbitratorBalanceBefore = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -1884,7 +2236,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([arbitrator])
         .rpc();
       await provider.connection.confirmTransaction(tx8, "confirmed");
-         await sleep(10000);
+         await sleep(1000);
 
       const sellerBalanceAfter = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const arbitratorBalanceAfter = (await provider.connection.getTokenAccountBalance(arbitratorTokenAccount)).value.amount;
@@ -1962,7 +2314,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       try {
         await program.methods
@@ -1988,7 +2348,9 @@ describe("Localsolana Contracts Tests", () => {
       await cleanupEscrow(escrowPDA, null, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
 
-    it("Fails to fund escrow with insufficient funds", async () => {
+    // SKIPPED: This test was moved to the end of the test suite to avoid draining funds early
+    // The original test drained the seller's USDC balance, causing subsequent tests to fail
+    it.skip("Fails to fund escrow with insufficient funds (ORIGINAL - SKIPPED)", async () => {
       const escrowId = generateRandomId();
       const tradeId = generateRandomId();
       const amount = new BN(1000000);
@@ -2007,12 +2369,37 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-         await sleep(10000);
 
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
+
+      // Instead of burning USDC, transfer it to BUYER_TOKEN_ADDRESS to preserve funds
       const currentBalance = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
-      const burnAmount = new BN(currentBalance).sub(new BN(500000));
-      await token.burn(provider.connection, seller, sellerTokenAccount, tokenMint, seller, burnAmount.toNumber());
-         await sleep(10000);
+      const transferAmount = new BN(currentBalance).sub(new BN(500000)); // Leave 0.5 USDC
+
+      // Use BUYER_TOKEN_ADDRESS as the destination since it's a valid token account
+      const destinationAccount = new PublicKey(process.env.BUYER_TOKEN_ADDRESS || "FN7L7W7eiGMveGSiaxHoZ6ySBFV6akY3JtnTPsTNgWrt");
+
+      // Transfer USDC to buyer token account instead of burning
+      console.log(`Transferring ${(transferAmount.toNumber() / 1_000_000).toFixed(2)} USDC to BUYER_TOKEN_ADDRESS: ${destinationAccount.toBase58()}`);
+      const transferTx = await token.transfer(
+        provider.connection,
+        seller,
+        sellerTokenAccount,
+        destinationAccount,
+        seller,
+        transferAmount.toNumber()
+      );
+      await provider.connection.confirmTransaction(transferTx, "confirmed");
+      console.log(`Transfer completed. Seller now has ${(500000 / 1_000_000).toFixed(2)} USDC remaining`);
+      console.log(`Buyer received ${(transferAmount.toNumber() / 1_000_000).toFixed(2)} USDC (can be returned later if needed)`);
+      await sleep(1000);
 
       try {
         await program.methods
@@ -2057,7 +2444,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-       await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       const sellerBalanceBeforeFirst = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.uiAmount;
       console.log(`Seller USDC before first funding: ${sellerBalanceBeforeFirst}`);
@@ -2077,7 +2472,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-       await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       const sellerBalanceAfterFirst = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.uiAmount;
       console.log(`Seller USDC after first funding: ${sellerBalanceAfterFirst}`);
@@ -2092,7 +2496,7 @@ describe("Localsolana Contracts Tests", () => {
         2000000 // 2 USDC
       );
       await provider.connection.confirmTransaction(transferTx, "confirmed");
-       await sleep(10000);
+       await sleep(1000);
 
       const sellerBalanceBeforeSecond = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.uiAmount;
       console.log(`Seller USDC after transfer, before second funding: ${sellerBalanceBeforeSecond}`);
@@ -2136,7 +2540,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(cancelTx, "confirmed");
-       await sleep(10000);
+       await sleep(1000);
 
       await cleanupEscrow(escrowPDA, escrowTokenPDA, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
@@ -2162,7 +2566,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-      await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       let escrowAccount = await program.account.escrow.fetch(escrowPDA);
       assert.equal(escrowAccount.trackedBalance.toString(), "0", "Tracked balance should be 0 after creation");
@@ -2183,7 +2595,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-      await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       escrowAccount = await program.account.escrow.fetch(escrowPDA);
       const expectedTrackedBalance = amount.add(amount.div(new BN(100)));
@@ -2199,7 +2620,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-      await sleep(10000);
+
+      // Log fiat payment marking
+      txLogger.logEscrowOperation(
+        "Fiat Payment Marked",
+        "Buyer confirmed fiat payment received",
+        tx3
+      );
+
+      await sleep(1000);
 
       escrowAccount = await program.account.escrow.fetch(escrowPDA);
       assert.equal(escrowAccount.trackedBalance.toString(), expectedTrackedBalance.toString(), "Tracked balance should remain unchanged after marking fiat paid");
@@ -2219,7 +2648,23 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-      await sleep(10000);
+
+      // Log USDC transfers from escrow release
+      txLogger.logUsdcTransfer(
+        amount, // Principal amount to buyer
+        "Buyer",
+        tx4,
+        "buyer"
+      );
+
+      txLogger.logUsdcTransfer(
+        amount.div(new BN(100)), // Fee amount to arbitrator
+        "Arbitrator (Fee)",
+        tx4,
+        "arbitrator"
+      );
+
+      await sleep(1000);
 
       // Verify account was closed (which means tracked_balance was set to 0 before closure)
       assert.isNull(await provider.connection.getAccountInfo(escrowPDA), "Escrow state account should be closed after release");
@@ -2248,7 +2693,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-      await sleep(10000);
+
+      // Log sequential escrow creation
+      txLogger.logEscrowOperation(
+        "Sequential Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, Sequential: ${initialSequentialAddress.toBase58()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       // Step 2: Update sequential address and capture event
       const tx2 = await program.methods
@@ -2260,7 +2713,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-      await sleep(10000);
+
+      // Log sequential address update
+      txLogger.logEscrowOperation(
+        "Sequential Address Updated",
+        `From: ${initialSequentialAddress.toBase58()} → To: ${newSequentialAddress.toBase58()}`,
+        tx2
+      );
+
+      await sleep(1000);
 
       // Step 3: Get transaction details to validate SequentialAddressUpdated event
       const txDetails = await provider.connection.getTransaction(tx2, {
@@ -2309,7 +2770,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-      await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       // Step 2: Fund escrow - should emit EscrowBalanceChanged and FundsDeposited events
       const tx2 = await program.methods
@@ -2327,7 +2796,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-      await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       // Step 3: Mark fiat paid - should emit FiatMarkedPaid event
       const tx3 = await program.methods
@@ -2339,7 +2817,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-      await sleep(10000);
+
+      // Log fiat payment marking
+      txLogger.logEscrowOperation(
+        "Fiat Payment Marked",
+        "Buyer confirmed fiat payment received",
+        tx3
+      );
+
+      await sleep(1000);
 
       // Step 4: Release escrow - should emit EscrowBalanceChanged and EscrowReleased events
       const tx4 = await program.methods
@@ -2356,7 +2842,23 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx4, "confirmed");
-      await sleep(10000);
+
+      // Log USDC transfers from escrow release
+      txLogger.logUsdcTransfer(
+        amount, // Principal amount to buyer
+        "Buyer",
+        tx4,
+        "buyer"
+      );
+
+      txLogger.logUsdcTransfer(
+        amount.div(new BN(100)), // Fee amount to arbitrator
+        "Arbitrator (Fee)",
+        tx4,
+        "arbitrator"
+      );
+
+      await sleep(1000);
 
       // Verify all state changes occurred (which means events were emitted)
       // Note: In localnet, we validate state changes rather than parsing events directly
@@ -2388,7 +2890,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-      await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       // Step 2: Fund escrow - this should emit FundsDeposited event
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
@@ -2407,7 +2917,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-      await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       // Step 3: Verify funding occurred (which means FundsDeposited event was emitted)
       const escrowAccount = await program.account.escrow.fetch(escrowPDA);
@@ -2432,7 +2951,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(cancelTx, "confirmed");
-      await sleep(10000);
+      await sleep(1000);
 
       await cleanupEscrow(escrowPDA, escrowTokenPDA, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
@@ -2458,7 +2977,15 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx1, "confirmed");
-      await sleep(10000);
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
 
       // Step 2: Fund escrow
       const tx2 = await program.methods
@@ -2476,7 +3003,16 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(tx2, "confirmed");
-      await sleep(10000);
+
+      // Log USDC transfer to escrow
+      txLogger.logUsdcTransfer(
+        amount,
+        "Escrow Account",
+        tx2,
+        "escrow"
+      );
+
+      await sleep(1000);
 
       // Step 3: Mark fiat paid - this should emit FiatMarkedPaid event
       const tx3 = await program.methods
@@ -2488,7 +3024,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([buyer])
         .rpc();
       await provider.connection.confirmTransaction(tx3, "confirmed");
-      await sleep(10000);
+      await sleep(1000);
 
       // Step 4: Verify fiat was marked as paid (which means FiatMarkedPaid event was emitted)
       const escrowAccount = await program.account.escrow.fetch(escrowPDA);
@@ -2509,7 +3045,7 @@ describe("Localsolana Contracts Tests", () => {
         .signers([seller])
         .rpc();
       await provider.connection.confirmTransaction(releaseTx, "confirmed");
-      await sleep(10000);
+      await sleep(1000);
 
       await cleanupEscrow(escrowPDA, escrowTokenPDA, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
@@ -2524,6 +3060,82 @@ describe("Localsolana Contracts Tests", () => {
 
       // For now, we just assert that the test framework is working
       assert.isTrue(true, "Dispute event validation test placeholder");
+    });
+
+    // TODO: Move this test to the very end after all other tests complete
+    // This test drains the seller's USDC balance and should run last
+    it("Fails to fund escrow with insufficient funds (runs last)", async () => {
+      const escrowId = generateRandomId();
+      const tradeId = generateRandomId();
+      const amount = new BN(1000000);
+      const [escrowPDA] = deriveEscrowPDA(escrowId, tradeId);
+      const [escrowTokenPDA] = deriveEscrowTokenPDA(escrowPDA);
+
+      console.log("=== Insufficient Funds Test (Running Last) ===");
+      const tx1 = await program.methods
+        .createEscrow(escrowId, tradeId, amount, false, null)
+        .accounts({
+          seller: seller.publicKey,
+          buyer: buyer.publicKey,
+          escrow: escrowPDA,
+          system_program: anchor.web3.SystemProgram.programId,
+        })
+        .signers([seller])
+        .rpc();
+      await provider.connection.confirmTransaction(tx1, "confirmed");
+
+      // Log escrow creation
+      txLogger.logEscrowOperation(
+        "Escrow Created",
+        `Amount: ${txLogger.formatUsdcAmount(amount)} USDC, ID: ${escrowId.toString()}`,
+        tx1
+      );
+
+      await sleep(1000);
+
+      // Instead of burning USDC, transfer it to BUYER_TOKEN_ADDRESS to preserve funds
+      const currentBalance = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
+      const transferAmount = new BN(currentBalance).sub(new BN(500000)); // Leave 0.5 USDC
+
+      // Use BUYER_TOKEN_ADDRESS as the destination since it's a valid token account
+      const destinationAccount = new PublicKey(process.env.BUYER_TOKEN_ADDRESS || "FN7L7W7eiGMveGSiaxHoZ6ySBFV6akY3JtnTPsTNgWrt");
+
+      // Transfer USDC to buyer token account instead of burning
+      console.log(`Transferring ${(transferAmount.toNumber() / 1_000_000).toFixed(2)} USDC to BUYER_TOKEN_ADDRESS: ${destinationAccount.toBase58()}`);
+      const transferTx = await token.transfer(
+        provider.connection,
+        seller,
+        sellerTokenAccount,
+        destinationAccount,
+        seller,
+        transferAmount.toNumber()
+      );
+      await provider.connection.confirmTransaction(transferTx, "confirmed");
+      console.log(`Transfer completed. Seller now has ${(500000 / 1_000_000).toFixed(2)} USDC remaining`);
+      console.log(`Buyer received ${(transferAmount.toNumber() / 1_000_000).toFixed(2)} USDC (can be returned later if needed)`);
+      await sleep(1000);
+
+      try {
+        await program.methods
+          .fundEscrow()
+          .accounts({
+            seller: seller.publicKey,
+            escrow: escrowPDA,
+            sellerTokenAccount: sellerTokenAccount,
+            escrowTokenAccount: escrowTokenPDA,
+            tokenMint: tokenMint,
+            tokenProgram: token.TOKEN_PROGRAM_ID,
+            systemProgram: anchor.web3.SystemProgram.programId,
+            rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+          })
+          .signers([seller])
+          .rpc();
+        assert.fail("Should have thrown an error for insufficient funds");
+      } catch (error: any) {
+        assert.include(error.message, "Insufficient funds", "Expected InsufficientFunds error");
+      }
+
+      await cleanupEscrow(escrowPDA, null, seller, buyerTokenAccount, arbitratorTokenAccount);
     });
   });
 });
