@@ -1,21 +1,20 @@
 # Notes
 
-- rename repo to yapbay-contracts-rust
-
-## Tests
-- update tests
-- Test invalid inputs (e.g., missing fields, bad public keys) and verify error responses (API)
-- address other suggestions
-- re-run
-
 ## Types
 - add 0.1.2 IDL/types to frontend
 
+## Disputes
+- evidence hashes not being stored properly in escrow account state
+- tests for disputes, incl events
+
 ## Docs
+- rename repo to yapbay-contracts-rust
+- update github, anchor.toml, etc
 - update README, docs to account for tracked_balance, EscrowBalanceChanged event, SequentialAddressUpdated, enriched events.
 
 ## Future
-- Learn from https://github.com/eucalyptustech/adstream-app
+- mismatches between IDL and tests, linter errors in tests
+- Learn from adstream program
 - https://github.com/codama-idl/codama
 - https://github.com/DecalLabs/gill
 - fully gasless
@@ -26,7 +25,8 @@
 - set_paused(bool) (only owner)
 - set_arbitrator(Pubkey) (only owner)
 - Emit ConfigUpdated event
-
+- more tests
+- devnet tests result in loss of 1 USDC
 
 ## Ref
 
@@ -38,9 +38,13 @@ solana program show 4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x --url devnet
 #### check token balances
 spl-token accounts -v --owner DyKS1ywHcLwJCNFgY8yxN2pRRgnkpu3YwKAttuy9kdLP --url devnet
 spl-token accounts -v --owner BdRe6PgopWpmdsh6ZNbjwZTeN7i7vx8jLkcqJ6oLVERK --url devnet
+spl-token balance 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU --owner /home/george5492/repos/ls-contracts-fixed/keys/buyer-devnet/buyer-keypair.json
 
 #### transfer tokens
 spl-token transfer 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU 1 FN7L7W7eiGMveGSiaxHoZ6ySBFV6akY3JtnTPsTNgWrt --url devnet --fund-recipient
+
+##### send from buyer to seller
+spl-token transfer 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU 20.5 2ozy4RSqXbVvrE1kptN3UG4cseGcUEdKLjUQNtTULim8 --url devnet --owner /home/george5492/repos/ls-contracts-fixed/keys/buyer-devnet/buyer-keypair.json
 
 ### Inspect
 
@@ -65,3 +69,11 @@ solana address -k target/deploy/localsolana_contracts-keypair.json // gen declar
 anchor deploy
 update `updateexpectedProgramId` in tests if needed
 anchor test --skip-local-validator --skip-deploy
+
+### devnet
+configure Anchor.toml and .env properly for devnet
+solana config get to double check
+ensure deploying keypair has sufficient sol
+https://explorer.solana.com/?cluster=devnet
+anchor deploy
+anchor test --skip-deploy
