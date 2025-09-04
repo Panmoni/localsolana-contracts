@@ -215,7 +215,54 @@ graph TD
 
 ## About
 
-This is based on the YapBay Sequential Escrow System. https://YapBay.com
+This is an implementation of the YapBay Sequential Escrow System. https://YapBay.com
+
+## .env
+```
+## TESTS
+VERBOSE_LOGGING=true
+
+## EXPLORER
+BLOCK_EXPLORER_DEVNET="https://explorer.solana.com/?cluster=devnet"
+
+## DEFAULT/ORIGINAL
+ORIGINAL_ADDRESS=
+ORIGINAL_TOKEN_ADDRESS=
+ORIGINAL_KEYPAIR=""
+
+## DEPLOYER/ARBITRATOR
+ARBITRATOR_ADDRESS=
+ARBITRATOR_TOKEN_ADDRESS=
+ARBITRATOR_KEYPAIR=""
+
+## PROGRAM_ID
+PROGRAM_ID=
+PROGRAM_KEYPAIR=""
+
+## BUYER
+BUYER_ADDRESS=
+BUYER_TOKEN_ADDRESS=
+BUYER_KEYPAIR=""
+
+## SELLER
+SELLER_ADDRESS=
+SELLER_TOKEN_ADDRESS=
+SELLER_KEYPAIR=""
+
+## localnet
+# ANCHOR_PROVIDER_URL="http://127.0.0.1:8899"
+ANCHOR_WALLET=""
+
+ENVIRONMENT=devnet  # localnet || devnet
+CREATE_LOCALNET_INFRASTRUCTURE=false
+USDC_AIRDROP_AMOUNT=1000
+
+## devnet
+# ANCHOR_PROVIDER_URL="https://api.devnet.solana.com"
+# Thank you Quicknode free plan.
+ANCHOR_PROVIDER_URL=""
+```
+
 
 ## More Information
 
