@@ -13,6 +13,7 @@
 - update README, docs to account for tracked_balance, EscrowBalanceChanged event, SequentialAddressUpdated, enriched events.
 
 ## Future
+- add security.txt, security policy, etc
 - mismatches between IDL and tests, linter errors in tests
 - Learn from adstream program
 - https://github.com/codama-idl/codama
