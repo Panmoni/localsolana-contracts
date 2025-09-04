@@ -1,8 +1,5 @@
 # Notes
 
-## Types
-- add 0.1.2 IDL/types to frontend
-
 ## Disputes
 - evidence hashes not being stored properly in escrow account state
 - tests for disputes, incl events
