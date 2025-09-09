@@ -659,7 +659,7 @@ describe("Localsolana Contracts Tests", () => {
       console.log(`Seller token balance before: ${sellerBalanceBefore}`);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -765,7 +765,7 @@ describe("Localsolana Contracts Tests", () => {
       await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -845,7 +845,7 @@ describe("Localsolana Contracts Tests", () => {
       await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -1117,7 +1117,7 @@ describe("Localsolana Contracts Tests", () => {
       await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -1296,7 +1296,7 @@ describe("Localsolana Contracts Tests", () => {
       await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -1398,7 +1398,7 @@ describe("Localsolana Contracts Tests", () => {
       await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -1583,7 +1583,7 @@ describe("Localsolana Contracts Tests", () => {
          await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -1731,7 +1731,7 @@ describe("Localsolana Contracts Tests", () => {
          await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -1902,7 +1902,7 @@ describe("Localsolana Contracts Tests", () => {
       await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -2116,7 +2116,7 @@ describe("Localsolana Contracts Tests", () => {
       await sleep(1000);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -2326,7 +2326,7 @@ describe("Localsolana Contracts Tests", () => {
 
       try {
         await program.methods
-          .fundEscrow()
+          .fundEscrow(escrowId, tradeId)
           .accounts({
             seller: buyer.publicKey,
             escrow: escrowPDA,
@@ -2403,7 +2403,7 @@ describe("Localsolana Contracts Tests", () => {
 
       try {
         await program.methods
-          .fundEscrow()
+          .fundEscrow(escrowId, tradeId)
           .accounts({
             seller: seller.publicKey,
             escrow: escrowPDA,
@@ -2458,7 +2458,7 @@ describe("Localsolana Contracts Tests", () => {
       console.log(`Seller USDC before first funding: ${sellerBalanceBeforeFirst}`);
 
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -2503,7 +2503,7 @@ describe("Localsolana Contracts Tests", () => {
 
       try {
         await program.methods
-          .fundEscrow()
+          .fundEscrow(escrowId, tradeId)
           .accounts({
             seller: seller.publicKey,
             escrow: escrowPDA,
@@ -2581,7 +2581,7 @@ describe("Localsolana Contracts Tests", () => {
 
       // Step 2: Fund escrow - tracked_balance should be amount + fee
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -2782,7 +2782,7 @@ describe("Localsolana Contracts Tests", () => {
 
       // Step 2: Fund escrow - should emit EscrowBalanceChanged and FundsDeposited events
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -2903,7 +2903,7 @@ describe("Localsolana Contracts Tests", () => {
       // Step 2: Fund escrow - this should emit FundsDeposited event
       const sellerBalanceBefore = (await provider.connection.getTokenAccountBalance(sellerTokenAccount)).value.amount;
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -2989,7 +2989,7 @@ describe("Localsolana Contracts Tests", () => {
 
       // Step 2: Fund escrow
       const tx2 = await program.methods
-        .fundEscrow()
+        .fundEscrow(escrowId, tradeId)
         .accounts({
           seller: seller.publicKey,
           escrow: escrowPDA,
@@ -3117,7 +3117,7 @@ describe("Localsolana Contracts Tests", () => {
 
       try {
         await program.methods
-          .fundEscrow()
+          .fundEscrow(escrowId, tradeId)
           .accounts({
             seller: seller.publicKey,
             escrow: escrowPDA,
