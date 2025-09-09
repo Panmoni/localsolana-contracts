@@ -152,7 +152,7 @@ describe("Localsolana Contracts Tests", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
   const program = anchor.workspace.LocalsolanaContracts as Program<LocalsolanaContracts>;
-  const expectedProgramId = new PublicKey("D7KnbDFa85CwPbN5DzXKfPcKg5KNXRiQQMEoDTP4FRLe");
+  const expectedProgramId = new PublicKey("4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x");
 
   // Helper Functions
   const deriveEscrowPDA = (escrowId: BN, tradeId: BN): [PublicKey, number] =>
