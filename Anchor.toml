@@ -8,10 +8,10 @@ skip-lint = false
 seeds = true
 
 [programs.localnet]
-localsolana_contracts = "D7KnbDFa85CwPbN5DzXKfPcKg5KNXRiQQMEoDTP4FRLe"
+localsolana_contracts = "4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x"
 
 [programs.devnet]
-localsolana_contracts = "D7KnbDFa85CwPbN5DzXKfPcKg5KNXRiQQMEoDTP4FRLe"
+localsolana_contracts = "4PonUp1nPEzDPnRMPjTqufLT3f37QuBJGk1CVnsTXx7x"
 
 [registry]
 url = "https://api.apr.dev"
@@ -20,7 +20,7 @@ url = "https://api.apr.dev"
 cluster = "devnet"
 # cluster = "https://distinguished-chaotic-bird.solana-devnet.quiknode.pro/483d675967ac17c1970a9b07fdba88abe17d421e/"
 # wallet = "~/repos/ls-contracts-fixed/keys/devnet/program-keypair.json"
-wallet = "/home/george5492/.config/solana/id.json"
+wallet = "/home/george5492/repos/ls-contracts-fixed/keys/devnet/program-keypair.json"
 
 # Localnet
 #cluster = "http://127.0.0.1:8899"
