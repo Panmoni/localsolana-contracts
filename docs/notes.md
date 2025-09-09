@@ -73,5 +73,6 @@ configure Anchor.toml and .env properly for devnet
 solana config get to double check
 ensure deploying keypair has sufficient sol
 https://explorer.solana.com/?cluster=devnet
-anchor deploy
+// to override
+anchor deploy --program-name localsolana_contracts --program-keypair /home/george5492/repos/ls-contracts-fixed/keys/program-devnet/program-keypair.json
 anchor test --skip-deploy
