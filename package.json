@@ -1,12 +1,12 @@
 {
   "license": "ISC",
-  "type": "module",
   "scripts": {
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
     "setup": "./setup.sh",
     "build": "npm run setup && anchor build",
-    "clean": "anchor clean && npm run setup"
+    "clean": "anchor clean && npm run setup",
+    "generate-events": "ts-node scripts/generate-events.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.0",
