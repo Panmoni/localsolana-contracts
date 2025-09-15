@@ -28,7 +28,7 @@
 
 ## Ref
 
-## Generate Events
+### Generate Events
 For testing purposes
 npm run generate-events
 
