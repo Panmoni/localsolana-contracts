@@ -28,6 +28,10 @@
 
 ## Ref
 
+## Generate Events
+For testing purposes
+npm run generate-events
+
 ### devnet
 solana config set --url https://api.devnet.solana.com
 solana config set --keypair ~/repos/ls-contracts-fixed/keys/devnet/program-keypair.json
