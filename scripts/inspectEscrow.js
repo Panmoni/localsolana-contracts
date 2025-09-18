@@ -1,4 +1,7 @@
-// node scripts/inspectEscrow.js
+// node scripts/inspectEscrow.js [--escrow <escrowPDA>]
+// Examples:
+//   node scripts/inspectEscrow.js                    # Inspect all escrow accounts
+//   node scripts/inspectEscrow.js --escrow <PDA>     # Inspect specific escrow account
 
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from '@solana/web3.js';
@@ -7,7 +10,45 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+// Parse command line arguments
+function parseArgs() {
+  const args = process.argv.slice(2);
+  const options = {
+    escrowPDA: null
+  };
+
+  // Check for help flag
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(`
+Usage: node scripts/inspectEscrow.js [options]
+
+Options:
+  --escrow <PDA>    Inspect a specific escrow account by its PDA
+  --help, -h        Show this help message
+
+Examples:
+  node scripts/inspectEscrow.js                           # Inspect all escrow accounts
+  node scripts/inspectEscrow.js --escrow <escrowPDA>      # Inspect specific escrow account
+  node scripts/inspectEscrow.js --help                    # Show this help message
+`);
+    process.exit(0);
+  }
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--escrow' && i + 1 < args.length) {
+      options.escrowPDA = args[i + 1];
+      i++; // Skip the next argument as it's the value
+    } else if (args[i] === '--escrow' && i + 1 >= args.length) {
+      console.error("Error: --escrow flag requires a PDA address");
+      process.exit(1);
+    }
+  }
+
+  return options;
+}
+
 async function inspectEscrow() {
+  const options = parseArgs();
   try {
     // Setup provider
     const provider = anchor.AnchorProvider.env();
@@ -18,17 +59,45 @@ async function inspectEscrow() {
     const program = anchor.workspace.LocalsolanaContracts;
     console.log("Program ID:", program.programId.toBase58());
 
-    // List all escrow accounts
-    console.log("\nFetching all escrow accounts...");
-    const escrowAccounts = await program.account.escrow.all();
-    console.log(`Found ${escrowAccounts.length} escrow accounts\n`);
+    let escrowAccounts = [];
+
+    if (options.escrowPDA) {
+      // Inspect specific escrow account
+      console.log(`\nFetching specific escrow account: ${options.escrowPDA}`);
+      try {
+        // Validate PDA format
+        const escrowPDA = new PublicKey(options.escrowPDA);
+        const escrowAccount = await program.account.escrow.fetch(escrowPDA);
+        escrowAccounts = [{
+          publicKey: escrowPDA,
+          account: escrowAccount
+        }];
+        console.log("Found escrow account\n");
+      } catch (error) {
+        if (error.message.includes('Invalid public key')) {
+          console.error(`Error: Invalid PDA format "${options.escrowPDA}". Please provide a valid Solana public key.`);
+        } else {
+          console.error(`Error fetching escrow account ${options.escrowPDA}:`, error.message);
+        }
+        return;
+      }
+    } else {
+      // List all escrow accounts
+      console.log("\nFetching all escrow accounts...");
+      escrowAccounts = await program.account.escrow.all();
+      console.log(`Found ${escrowAccounts.length} escrow accounts\n`);
+    }
 
     let totalLockedFunds = 0;
     let accountsWithFunds = 0;
     let balanceMismatches = 0;
 
     // Table header
-    console.log("ESCROW ACCOUNTS OVERVIEW");
+    if (options.escrowPDA) {
+      console.log("ESCROW ACCOUNT OVERVIEW");
+    } else {
+      console.log("ESCROW ACCOUNTS OVERVIEW");
+    }
     console.log("=".repeat(140));
     console.log("│ Escrow ID │ Trade ID │ State       │ Fiat │ Seq │ Tracked │ Token Account │ USDC Balance │ SOL Balance │ Status");
     console.log("│           │          │             │ Paid │     │ Balance │              │              │             │");
@@ -83,7 +152,7 @@ async function inspectEscrow() {
             totalLockedFunds += balance;
             accountsWithFunds++;
 
-            if (escrowAccount.trackedBalance !== balance) {
+            if (escrowAccount.trackedBalance.toString() !== balance.toString()) {
               balanceMismatches++;
               status = "MISMATCH!";
             }
@@ -105,7 +174,11 @@ async function inspectEscrow() {
     console.log("=".repeat(140));
 
     // Summary section
-    console.log("\nDETAILED ACCOUNT INFORMATION");
+    if (options.escrowPDA) {
+      console.log("\nDETAILED ACCOUNT INFORMATION");
+    } else {
+      console.log("\nDETAILED ACCOUNT INFORMATION");
+    }
     console.log("=".repeat(80));
 
     for (let i = 0; i < escrowAccounts.length; i++) {
@@ -151,7 +224,7 @@ async function inspectEscrow() {
           console.log(`   SOL Balance: ${(tokenAccountInfo.lamports / 1e9).toFixed(6)} SOL`);
 
           // Check for balance mismatch
-          if (escrowAccount.trackedBalance !== parseInt(tokenBalance.value.amount)) {
+          if (escrowAccount.trackedBalance.toString() !== tokenBalance.value.amount) {
             console.log(`   ⚠️  BALANCE MISMATCH: Tracked=${escrowAccount.trackedBalance}, Actual=${tokenBalance.value.amount}`);
           }
         } else {
@@ -209,16 +282,30 @@ async function inspectEscrow() {
     console.log("FINAL SUMMARY");
     console.log("=".repeat(80));
 
-    console.log(`Total escrow accounts: ${escrowAccounts.length}`);
-    console.log(`Accounts with locked funds: ${accountsWithFunds}`);
-    console.log(`Total locked USDC: ${(totalLockedFunds / 1e6).toFixed(2)} USDC`);
-    console.log(`Balance mismatches: ${balanceMismatches}`);
+    if (options.escrowPDA) {
+      console.log(`Escrow account: ${options.escrowPDA}`);
+      console.log(`Has locked funds: ${accountsWithFunds > 0 ? "Yes" : "No"}`);
+      console.log(`Locked USDC: ${(totalLockedFunds / 1e6).toFixed(2)} USDC`);
+      console.log(`Balance mismatch: ${balanceMismatches > 0 ? "Yes" : "No"}`);
 
-    if (totalLockedFunds > 0) {
-      console.log("\n⚠️  FUNDS ARE LOCKED IN ESCROW ACCOUNTS!");
-      console.log("These funds need to be reclaimed through proper cleanup.");
+      if (totalLockedFunds > 0) {
+        console.log("\n⚠️  FUNDS ARE LOCKED IN THIS ESCROW ACCOUNT!");
+        console.log("These funds need to be reclaimed through proper cleanup.");
+      } else {
+        console.log("\n✅ This escrow account is properly closed with no locked funds.");
+      }
     } else {
-      console.log("\n✅ All escrow accounts are properly closed with no locked funds.");
+      console.log(`Total escrow accounts: ${escrowAccounts.length}`);
+      console.log(`Accounts with locked funds: ${accountsWithFunds}`);
+      console.log(`Total locked USDC: ${(totalLockedFunds / 1e6).toFixed(2)} USDC`);
+      console.log(`Balance mismatches: ${balanceMismatches}`);
+
+      if (totalLockedFunds > 0) {
+        console.log("\n⚠️  FUNDS ARE LOCKED IN ESCROW ACCOUNTS!");
+        console.log("These funds need to be reclaimed through proper cleanup.");
+      } else {
+        console.log("\n✅ All escrow accounts are properly closed with no locked funds.");
+      }
     }
 
   } catch (error) {
