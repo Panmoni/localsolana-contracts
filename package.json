@@ -7,7 +7,8 @@
     "build": "npm run setup && anchor build",
     "clean": "anchor clean && npm run setup",
     "generate-events": "ts-node scripts/generate-events.ts",
-    "event-listener": "ts-node scripts/event-listener.ts"
+    "event-listener": "ts-node scripts/event-listener.ts",
+    "derive-token-address": "ts-node scripts/deriveTokenAddress.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.0",
